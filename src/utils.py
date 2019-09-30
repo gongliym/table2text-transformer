@@ -53,8 +53,8 @@ def initialize_exp(params):
     - create a logger
     """
     if params.local_rank == -1 or params.no_cuda:
-        device = torch.device("cpu")
-        params.n_gpu = 0
+        device = torch.device("cuda" if torch.cuda.is_available() and not params.no_cuda else "cpu")
+        params.n_gpu = torch.cuda.device_count()
     else:
         torch.cuda.set_device(params.local_rank)
         device = torch.device("cuda", params.local_rank)
