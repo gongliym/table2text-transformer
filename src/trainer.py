@@ -250,12 +250,8 @@ class EncDecTrainer(Trainer):
         self.model.train()
 
         batch = next(self.data)
-        x = batch["source"]
-        len_x = batch["source_length"]
-        y = batch["target"]
-        len_y = batch["target_length"]
-        # x, len_x = batch.src
-        # y, len_y = batch.tgt
+        x, len_x = batch.source
+        y, len_y = batch.target
 
         if params.device.type == 'cuda':
             x, len_x, y, len_y = to_cuda(x, len_x, y, len_y)
