@@ -23,50 +23,61 @@ def batch_size_fn(new, count, sofar):
     if count == 1:
         max_src_in_batch = 0
         max_tgt_in_batch = 0
-    max_src_in_batch = max(max_src_in_batch, len(new['source']) + 1)
-    max_tgt_in_batch = max(max_tgt_in_batch, len(new['target']) + 1)
+    max_src_in_batch = max(max_src_in_batch, len(new.source) + 1)
+    max_tgt_in_batch = max(max_tgt_in_batch, len(new.target) + 1)
     src_elements = count * max_src_in_batch
     tgt_elements = count * max_tgt_in_batch
     return max(src_elements, tgt_elements)
 
-def create_example(data, fields):
-    example = {}
-    assert len(data) == len(fields)
-    for (field_name, vocab), tokens in zip(fields, data):
-        example[field_name] = [vocab[tok] for tok in tokens] + [vocab.eos_index]
-    return example
+# def create_example(data, fields):
+#     example = {}
+#     assert len(data) == len(fields)
+#     for (field_name, vocab), tokens in zip(fields, data):
+#         example[field_name] = [vocab[tok] for tok in tokens] + [vocab.eos_index]
+#     return example
+#
+#
+# def create_batch(example_list, pad_index=0):
+#     src_max_len = max(len(example['source']) for example in example_list)
+#     tgt_max_len = max(len(example['target']) for example in example_list)
+#     src_padded, src_lengths, tgt_padded, tgt_lengths = [], [], [], []
+#     for example in example_list:
+#         src_seq = example['source']
+#         tgt_seq = example['target']
+#         src_padded.append(src_seq[:src_max_len] + [pad_index] * max(0, src_max_len - len(src_seq)))
+#         src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
+#
+#         tgt_padded.append(tgt_seq[:tgt_max_len] + [pad_index] * max(0, tgt_max_len - len(tgt_seq)))
+#         tgt_lengths.append(len(tgt_padded[-1]) - max(0, tgt_max_len - len(tgt_seq)))
+#     src_padded = torch.tensor(src_padded, dtype=torch.long)
+#     src_lengths = torch.tensor(src_lengths, dtype=torch.long)
+#     tgt_padded = torch.tensor(tgt_padded, dtype=torch.long)
+#     tgt_lengths = torch.tensor(tgt_lengths, dtype=torch.long)
+#     return {"source": src_padded, "source_length": src_lengths,
+#             "target": tgt_padded, "target_length": tgt_lengths}
 
 
-def create_batch(example_list, pad_index=0):
-    src_max_len = max(len(example['source']) for example in example_list)
-    tgt_max_len = max(len(example['target']) for example in example_list)
-    src_padded, src_lengths, tgt_padded, tgt_lengths = [], [], [], []
-    for example in example_list:
-        src_seq = example['source']
-        tgt_seq = example['target']
-        src_padded.append(src_seq[:src_max_len] + [pad_index] * max(0, src_max_len - len(src_seq)))
-        src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
-
-        tgt_padded.append(tgt_seq[:tgt_max_len] + [pad_index] * max(0, tgt_max_len - len(tgt_seq)))
-        tgt_lengths.append(len(tgt_padded[-1]) - max(0, tgt_max_len - len(tgt_seq)))
-    src_padded = torch.tensor(src_padded, dtype=torch.long)
-    src_lengths = torch.tensor(src_lengths, dtype=torch.long)
-    tgt_padded = torch.tensor(tgt_padded, dtype=torch.long)
-    tgt_lengths = torch.tensor(tgt_lengths, dtype=torch.long)
-    return {"source": src_padded, "source_length": src_lengths,
-            "target": tgt_padded, "target_length": tgt_lengths}
-
+class Example(object):
+    """Defines a single training or test example.
+    Stores each column of the example as an attribute.
+    """
+    @classmethod
+    def fromlist(cls, data, vocabs):
+        ex = cls()
+        for (name, vocab), sent in zip(vocabs, data):
+            setattr(ex, name, [vocab[t] for t in sent] + [vocab.eos_index])
+        return ex
 
 class Batch(object):
 
     @classmethod
     def fromExampleList(cls, minibatch, pad_index=0):
         batch = cls()
-        src_batch = Batch.pad(minibatch, 'src', pad_index)
-        tgt_batch = Batch.pad(minibatch, 'tgt', pad_index)
+        src_batch = Batch.pad(minibatch, 'source', pad_index)
+        tgt_batch = Batch.pad(minibatch, 'target', pad_index)
 
-        setattr(batch, 'src', src_batch)
-        setattr(batch, 'tgt', tgt_batch)
+        setattr(batch, 'source', src_batch)
+        setattr(batch, 'target', tgt_batch)
         return batch
 
     @classmethod
@@ -128,8 +139,7 @@ class DataIterator(object):
                     self.epoch_size = self.iterations_this_epoch
                 yield batch
         else:
-            for batch in self.batch_examples_keep_order(self.dataset,
-                                                        self.batch_size, constant=self.constant):
+            for batch in self.batch_examples_keep_order(self.dataset, self.batch_size, constant=self.constant):
                 yield batch
 
     # TODO The definition of Example class is changed.
@@ -166,17 +176,17 @@ class DataIterator(object):
                 if len(buckets[bucket_index]) >= bucket_capacities[bucket_index]:
                     buckets[bucket_index] = sorted(buckets[bucket_index], key=lambda x: self._example_length_fn(x))
                     bucket_batch_size = batch_sizes[bucket_index]
-                    yield create_batch(buckets[bucket_index][:bucket_batch_size], self.params.pad_index)
+                    yield Batch.fromExampleList(buckets[bucket_index][:bucket_batch_size], self.params.pad_index)
                     buckets[bucket_index] = buckets[bucket_index][bucket_batch_size:]
             if not self.repeat:
                 for bucket_index in range(len(buckets)):
                     buckets[bucket_index] = sorted(buckets[bucket_index], key=lambda x: self._example_length_fn(x))
                     bucket_batch_size = batch_sizes[bucket_index]
                     if len(buckets[bucket_index]) > bucket_batch_size:
-                        yield create_batch(buckets[bucket_index][:bucket_batch_size], self.params.pad_index)
-                        yield create_batch(buckets[bucket_index][bucket_batch_size:], self.params.pad_index)
+                        yield Batch.fromExampleList(buckets[bucket_index][:bucket_batch_size], self.params.pad_index)
+                        yield Batch.fromExampleList(buckets[bucket_index][bucket_batch_size:], self.params.pad_index)
                     elif len(buckets[bucket_index]) > 0:
-                        yield create_batch(buckets[bucket_index], self.params.pad_index)
+                        yield Batch.fromExampleList(buckets[bucket_index], self.params.pad_index)
 
                     buckets[bucket_index] = []
                 return
@@ -199,19 +209,19 @@ class DataIterator(object):
             if constant:
                 examples.append(example)
                 if len(examples) >= batch_size:
-                    yield create_batch(examples[:batch_size], self.params.pad_index)
+                    yield Batch.fromExampleList(examples[:batch_size], self.params.pad_index)
                     examples = examples[batch_size:]
             else:
                 examples.append(example)
                 size_sofar = batch_size_fn(example, len(examples), size_sofar)
                 if size_sofar == batch_size:
-                    yield create_batch(examples, self.params.pad_index)
+                    yield Batch.fromExampleList(examples, self.params.pad_index)
                     examples, size_sofar = [], 0
                 elif size_sofar > batch_size:
-                    yield create_batch(examples[:-1], self.params.pad_index)
+                    yield Batch.fromExampleList(examples[:-1], self.params.pad_index)
                     examples, size_sofar = examples[-1:], batch_size_fn(example, 1, size_sofar)
         if len(examples) > 0:
-            yield create_batch(examples, self.params.pad_index)
+            yield Batch.fromExampleList(examples, self.params.pad_index)
 
 
 class TranslationDataset(object):
@@ -262,7 +272,7 @@ class TranslationDataset(object):
                     if len(tgt_tokens) + 1 > params.max_sequence_size:
                         tgt_tokens = tgt_tokens[:params.max_sequence_size - 1]
 
-                    self.examples.append(create_example([src_tokens, tgt_tokens], self.fields))
+                    self.examples.append(Example.fromlist([src_tokens, tgt_tokens], self.fields))
             self.data_size = len(self.examples)
             logger.info("Loaded %d examples on memory" % self.data_size)
         else:
@@ -294,36 +304,36 @@ class TranslationDataset(object):
                     if len(src_tokens) == 0 or len(src_tokens) + 1 > self.params.max_sequence_size or \
                             len(tgt_tokens) == 0 or len(tgt_tokens) + 1 > self.params.max_sequence_size:
                         continue
-                    yield create_example([src_tokens, tgt_tokens], self.fields)
+                    yield Example.fromlist([src_tokens, tgt_tokens], self.fields)
 
 
-class RandomShuffler(object):
-    """Use random functions while keeping track of the random state to make it
-    reproducible and deterministic."""
-
-    def __init__(self, random_state=None):
-        self._random_state = random_state
-        if self._random_state is None:
-            self._random_state = random.getstate()
-
-        @contextmanager
-        def use_internal_state(self):
-            """Use a specific RNG state."""
-            old_state = random.getstate()
-            random.setstate(self._random_state)
-            yield
-            self._random_state = random.getstate()
-            random.setstate(old_state)
-
-        @property
-        def random_state(self):
-            return deepcopy(self._random_state)
-
-        @random_state.setter
-        def random_state(self, s):
-            self._random_state = s
-
-        def __call__(self, data):
-            """Shuffle and return a new list."""
-            with self.use_internal_state():
-                return random.sample(data, len(data))
+# class RandomShuffler(object):
+#     """Use random functions while keeping track of the random state to make it
+#     reproducible and deterministic."""
+#
+#     def __init__(self, random_state=None):
+#         self._random_state = random_state
+#         if self._random_state is None:
+#             self._random_state = random.getstate()
+#
+#         @contextmanager
+#         def use_internal_state(self):
+#             """Use a specific RNG state."""
+#             old_state = random.getstate()
+#             random.setstate(self._random_state)
+#             yield
+#             self._random_state = random.getstate()
+#             random.setstate(old_state)
+#
+#         @property
+#         def random_state(self):
+#             return deepcopy(self._random_state)
+#
+#         @random_state.setter
+#         def random_state(self, s):
+#             self._random_state = s
+#
+#         def __call__(self, data):
+#             """Shuffle and return a new list."""
+#             with self.use_internal_state():
+#                 return random.sample(data, len(data))

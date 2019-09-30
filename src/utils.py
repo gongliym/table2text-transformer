@@ -135,7 +135,7 @@ def get_model_path(params):
         subprocess.Popen("mkdir -p %s" % params.model_path, shell=True).wait()
 
 
-class AdamInverseSqrtWithWarmup(Adam):
+class AdamInverseSqrtWithWarmup(optim.Adam):
     """
     Decay the LR based on the inverse square root of the update number.
     We also support a warmup phase where we linearly increase the learning rate
