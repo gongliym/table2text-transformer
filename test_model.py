@@ -73,7 +73,7 @@ def get_parser():
     # experiment parameters
     parser.add_argument("--save_periodic", type=int, default=0,
                         help="Save the model periodically (0 to disable)")
-    parser.add_argument("--no_cuda", type=bool_flag, default=True,
+    parser.add_argument("--no_cuda", type=bool_flag, default=False,
                         help="Avoid using CUDA when available")
     parser.add_argument("--multi_gpu", type=bool_flag, default=False,
                         help="using multiple gpus")
