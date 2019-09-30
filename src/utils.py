@@ -18,7 +18,6 @@ import numpy as np
 import torch
 from torch import optim
 
-from .optimizer import Adam
 from .logger import create_logger
 
 
