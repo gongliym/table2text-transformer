@@ -44,33 +44,18 @@ def Embedding(num_embeddings, embedding_dim):
     nn.init.normal_(m.weight, mean=0, std=embedding_dim ** -0.5)
     return m
 
-
 def Linear(in_features, out_features, bias=True):
     m = nn.Linear(in_features, out_features, bias)
     nn.init.xavier_uniform_(m.weight, gain=1.0)
     return m
-
 
 def smoothed_softmax_cross_entropy_with_logits(logits, labels, smoothing=0.0):
     if not smoothing:
         loss = F.cross_entropy(logits, labels, reduction='mean')
         return loss
 
-    vocab_size = logits.size(1)
-    n = (vocab_size - 1)
-    p = 1.0 - smoothing
-    q = smoothing / n
-
-    one_hot = torch.randn(1, vocab_size, device=logits.device)
-    one_hot.fill_(q)
-    soft_targets = one_hot.repeat(labels.view(-1, 1).size(0), 1)
-    soft_targets.scatter_(1, labels.view(-1, 1), p)
-
     log_prb = F.log_softmax(logits, dim=1)
-    loss = -(soft_targets * log_prb).sum(dim=1)
-    loss = loss.sum() / len(labels)
-    return loss
-
+    return  F.nll_loss(log_prb, labels) * (1 - smoothing) - log_prb.mean() * smoothing
 
 def gelu(x):
     """
