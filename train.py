@@ -4,6 +4,7 @@ import argparse
 from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
 from src.data.data_loader import load_data
 from src.model import build_model
+from src.trainer import EncDecTrainer
 
 def get_parser():
     """
@@ -70,6 +71,22 @@ def get_parser():
     parser.add_argument("--on_memory", type=bool_flag, default=False,
                         help="Load all data on memory.")
 
+    # training parameters
+    parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,lr=0.0007",
+                        help="Optimizer (SGD / RMSprop / Adam, etc.)")
+    parser.add_argument("--clip_grad_norm", type=float, default=5,
+                        help="Clip gradients norm (0 to disable)")
+    parser.add_argument("--lambda_mt", type=str, default="1",
+                        help="MT coefficient")
+    parser.add_argument("--max_train_epoches", type=int, default=20,
+                        help="MT training epoches.")
+
+    # reload pretrained embeddings / pretrained model / checkpoint
+    parser.add_argument("--reload_model", type=str, default="",
+                        help="Reload a pretrained model")
+    parser.add_argument("--reload_checkpoint", type=str, default="",
+                        help="Reload a checkpoint")
+
     # experiment parameters
     parser.add_argument("--save_periodic", type=int, default=0,
                         help="Save the model periodically (0 to disable)")
@@ -84,21 +101,26 @@ def get_parser():
     return parser
 
 def main(params):
-    initialize_exp(params)
+    logger = initialize_exp(params)
     # load data
     train_data = load_data(params.train_files, params, train=False, repeat=False)
     model = build_model(params)
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
 
-    for batch in train_data:
-        loss = model(mode='train',
-                     src_seq=batch['source'],
-                     src_len=batch['source_length'],
-                     tgt_seq=batch['target'],
-                     tgt_len=batch['target_length'])
-        print(loss)
-        #print(batch)
+    total_num_parameters = 0
+    for name, parameter in model.named_parameters():
+        if parameter.requires_grad:
+            logger.info("Trainable parameter: %s %s" % (name, parameter.size()))
+            total_num_parameters += parameter.numel()
+
+    logger.info("Total trainable parameter number: %d" % total_num_parameters)
+    trainer = EncDecTrainer(model, train_data, params)
+
+    trainer.checkpoint(None)
+    while trainer.epoch <= params.max_train_epoches:
+        trainer.mt_step(params.lambda_mt)
+        trainer.iter()
 
 if __name__ == "__main__":
     # generate parser / parse parameters
