@@ -193,7 +193,7 @@ class DataIterator(object):
 
     def _example_length_fn(self, example):
         #return max(len(example['source']), len(example['target']))
-        return len(example.target)
+        return max(len(example.source), len(example.target))
 
     def _which_bucket_fn(self, length, buckets_min, buckets_max):
         assert len(buckets_min) == len(buckets_max)
