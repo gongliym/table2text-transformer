@@ -392,7 +392,11 @@ def load_tf_weights_in_tnmt(model, tf_checkpoint_path):
     init_vars = tf.train.list_variables(tf_path)
     tf_params = {}
     for name, shape in init_vars:
-        print("Loading TF weight {} with shape {}".format(name, shape))
+        if not name.startswith('transformer'):
+            continue
+        if name.endswith('Adam') or name.endswith("Adam_1"):
+            continue
+        # print("Loading TF weight {} with shape {}".format(name, shape))
         array = tf.train.load_variable(tf_path, name)
         tf_params[name] = array
 

@@ -250,14 +250,20 @@ class EncDecTrainer(Trainer):
         self.model.train()
 
         batch = next(self.data)
-        x, len_x = batch.source
-        y, len_y = batch.target
+        src_seq = batch['source']
+        src_len = batch['source_length']
+        tgt_seq = batch['target']
+        tgt_len = batch['target_length']
 
         if params.device.type == 'cuda':
-            x, len_x, y, len_y = to_cuda(x, len_x, y, len_y)
+            src_seq, src_len, tgt_seq, tgt_len = to_cuda(src_seq, src_len, tgt_seq, tgt_len)
 
         # encode source sentence
-        loss = self.model('train', src_seq=x, src_len=len_x, tgt_seq=y, tgt_len=len_y)
+        loss = self.model(src_seq=src_seq,
+                          src_len=src_len,
+                          tgt_seq=tgt_seq,
+                          tgt_len=tgt_len,
+                          mode='train')
         self.stats['loss'].append(loss.item())
 
         # Tensorboard

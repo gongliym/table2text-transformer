@@ -4,6 +4,8 @@ import argparse
 from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
 from src.data.data_loader import load_data
 from src.model import build_model
+from src.data.vocab import Vocabulary
+import torch
 
 def get_parser():
     """
@@ -51,10 +53,12 @@ def get_parser():
                         help="Use a GELU activation instead of ReLU")
 
     ## data
-    parser.add_argument("--train_files", nargs=2, type=str, required=True,
+    parser.add_argument("--train_files",nargs=2, type=str, required=True,
                         help="Train data path")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
-                        help="Vocabulary data path")
+                        help="Vocabulary path")
+    parser.add_argument("--input_file",type=str, required=True,
+                        help="Input data path")
     parser.add_argument("--encoding", type=str, default='utf-8',
                         help="Data encoding (utf-8)")
 
@@ -63,7 +67,7 @@ def get_parser():
                         help="Maximum length of sentences (after BPE)")
     parser.add_argument("--truncate_data", type=bool_flag, default=True,
                         help="truncate data when it's too long.")
-    parser.add_argument("--batch_size", type=int, default=4096,
+    parser.add_argument("--batch_size", type=int, default=2,
                         help="batch size")
     parser.add_argument("--constant_batch_size", type=bool_flag, default=False,
                         help="use static batch size")
@@ -81,25 +85,68 @@ def get_parser():
                         help="Multi-GPU - Local rank")
     parser.add_argument("--is_master", type=bool_flag, default=False,
                         help="is master")
+
+    # evaluation
+    parser.add_argument("--beam_size", type=int, default=1,
+                        help="beam size in beam search")
+    parser.add_argument("--length_penalty", type=float, default=1.0,
+                        help="length penalty in beam search")
+    parser.add_argument("--early_stopping", type=bool_flag, default=True,
+                        help="early stopping in beam search")
+
     return parser
+
+def load_test_data(input_file, vocab_file, params):
+    vocab = Vocabulary(vocab_file)
+    examples = []
+    for line in open(input_file, 'r'):
+        example = {}
+        tokens = line.strip().split()
+        example['source'] = [vocab[tok] for tok in tokens] + [vocab.eos_index]
+        examples.append(example)
+
+        if len(examples) >= params.batch_size:
+            src_max_len = max(len(ex['source']) for ex in examples[:params.batch_size])
+            src_padded, src_lengths = [], []
+            for ex in examples[:params.batch_size]:
+                src_seq = ex['source']
+                src_padded.append(src_seq[:src_max_len] + [params.pad_index] * max(0, src_max_len - len(src_seq)))
+                src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
+            src_padded = torch.tensor(src_padded, dtype=torch.long)
+            src_lengths = torch.tensor(src_lengths, dtype=torch.long)
+            yield {'source': src_padded, 'source_length':src_lengths}
+            examples = examples[params.batch_size:]
+    if len(examples) > 0:
+        src_max_len = max(len(ex['source']) for ex in examples)
+        src_padded, src_lengths = [], []
+        for ex in examples:
+            src_seq = ex['source']
+            src_padded.append(src_seq[:src_max_len] + [params.pad_index] * max(0, src_max_len - len(src_seq)))
+            src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
+        src_padded = torch.tensor(src_padded, dtype=torch.long)
+        src_lengths = torch.tensor(src_lengths, dtype=torch.long)
+        yield {'source': src_padded, 'source_length':src_lengths}
 
 def main(params):
     initialize_exp(params)
-    # load data
     train_data = load_data(params.train_files, params, train=False, repeat=False)
     model = build_model(params)
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
-
     model.eval()
-    for batch in train_data:
-        loss = model(mode='train',
-                     src_seq=batch['source'],
-                     src_len=batch['source_length'],
-                     tgt_seq=batch['target'],
-                     tgt_len=batch['target_length'])
-        print(loss)
-        #print(batch)
+
+    for batch in load_test_data(params.input_file, params.vocab_files[0], params):
+        output, out_len = model(mode='test',
+                                src_seq=batch['source'],
+                                src_len=batch['source_length'])
+
+        for j in range(output.size(0)):
+            sent = output[j,:]
+            delimiters = (sent == params.eos_index).nonzero().view(-1)
+            assert len(delimiters) >= 1 and delimiters[0].item() == 0
+            sent = sent[1:] if len(delimiters) == 1 else sent[1:delimiters[1]]
+            target = ' '.join([params.tgt_vocab.itos(sent[idx].item()) for idx in range(len(sent))])
+            print(target)
 
 if __name__ == "__main__":
     # generate parser / parse parameters

@@ -105,16 +105,10 @@ def main(params):
     # load data
     train_data = load_data(params.train_files, params, train=True, repeat=True)
     model = build_model(params)
+
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
 
-    total_num_parameters = 0
-    for name, parameter in model.named_parameters():
-        if parameter.requires_grad:
-            logger.info("Trainable parameter: %s %s" % (name, parameter.size()))
-            total_num_parameters += parameter.numel()
-
-    logger.info("Total trainable parameter number: %d" % total_num_parameters)
     trainer = EncDecTrainer(model, train_data, params)
 
     trainer.checkpoint(None)
