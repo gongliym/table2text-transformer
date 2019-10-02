@@ -71,9 +71,9 @@ class TransformerEvaluator(Evaluator):
 
         hypotheses = []
         for batch in load_and_batch_input_data(params.valid_files[0], params):
-            output, out_len = self.model(mode='test',
-                                         src_seq=batch['source'],
-                                         src_len=batch['source_length'])
+            if params.device.type == 'cuda':
+                src_seq, src_len = to_cuda(batch['source'], batch['source_length'])
+            output, out_len = self.model(mode='test', src_seq=src_seq, src_len=src_len)
 
             for j in range(output.size(0)):
                 sent = output[j,:]

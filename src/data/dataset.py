@@ -37,17 +37,17 @@ def load_and_batch_input_data(input_file, params):
         example['source'] = [vocab[tok] for tok in tokens] + [vocab.eos_index]
         examples.append(example)
 
-        if len(examples) >= params.batch_size:
-            src_max_len = max(len(ex['source']) for ex in examples[:params.batch_size])
+        if len(examples) >= params.decode_batch_size:
+            src_max_len = max(len(ex['source']) for ex in examples[:params.decode_batch_size])
             src_padded, src_lengths = [], []
-            for ex in examples[:params.batch_size]:
+            for ex in examples[:params.decode_batch_size]:
                 src_seq = ex['source']
                 src_padded.append(src_seq[:src_max_len] + [params.pad_index] * max(0, src_max_len - len(src_seq)))
                 src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
             src_padded = torch.tensor(src_padded, dtype=torch.long)
             src_lengths = torch.tensor(src_lengths, dtype=torch.long)
             yield {'source': src_padded, 'source_length':src_lengths}
-            examples = examples[params.batch_size:]
+            examples = examples[params.decode_batch_size:]
     if len(examples) > 0:
         src_max_len = max(len(ex['source']) for ex in examples)
         src_padded, src_lengths = [], []

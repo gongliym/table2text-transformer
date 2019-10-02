@@ -58,6 +58,8 @@ def get_parser():
                         help="Train data path")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
                         help="Vocabulary data path")
+    parser.add_argument("--valid_files", nargs=2, type=str, required=True,
+                        help="Train data path")
     parser.add_argument("--encoding", type=str, default='utf-8',
                         help="Data encoding (utf-8)")
 
@@ -106,6 +108,16 @@ def get_parser():
                         help="Multi-GPU - Local rank")
     parser.add_argument("--is_master", type=bool_flag, default=False,
                         help="is master")
+
+    # evaluation
+    parser.add_argument("--beam_size", type=int, default=1,
+                        help="beam size in beam search")
+    parser.add_argument("--length_penalty", type=float, default=1.0,
+                        help="length penalty in beam search")
+    parser.add_argument("--early_stopping", type=bool_flag, default=True,
+                        help="early stopping in beam search")
+    parser.add_argument("--decode_batch_size", type=int, default=2,
+                        help="decode batch size")
     return parser
 
 def main(params):
@@ -114,14 +126,17 @@ def main(params):
     train_data = load_data(params.train_files, params, train=True, repeat=True)
     model = build_model(params)
 
-    if params.tf_model_path != "":
-        model = load_tf_weights_in_tnmt(model, params.tf_model_path)
+    #print(model.encoder.embeddings.weight.device)
+    #if params.tf_model_path != "":
+    #    model = load_tf_weights_in_tnmt(model, params.tf_model_path)
 
+    #print(model.encoder.embeddings.weight.device)
+
+    # print(params.device)
     trainer = EncDecTrainer(model, train_data, params)
     evaluator = TransformerEvaluator(trainer, params)
 
-    trainer.checkpoint(None)
-    while trainer.epoch <= params.max_train_epoches:
+    while trainer.n_total_iter <= params.max_train_steps:
         trainer.mt_step(params.lambda_mt)
         trainer.iter()
         if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
