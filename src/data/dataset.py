@@ -15,8 +15,6 @@ from .vocab import Vocabulary
 logger = getLogger()
 
 global max_src_in_batch, max_tgt_in_batch
-
-
 def batch_size_fn(new, count, sofar):
     "Keep augmenting batch and calculate total number of tokens + padding."
     global max_src_in_batch, max_tgt_in_batch
@@ -28,6 +26,39 @@ def batch_size_fn(new, count, sofar):
     src_elements = count * max_src_in_batch
     tgt_elements = count * max_tgt_in_batch
     return max(src_elements, tgt_elements)
+
+def load_and_batch_input_data(input_file, params):
+    assert hasattr(params, 'src_vocab')
+    vocab = params.src_vocab
+    examples = []
+    for line in open(input_file, 'r'):
+        example = {}
+        tokens = line.strip().split()
+        example['source'] = [vocab[tok] for tok in tokens] + [vocab.eos_index]
+        examples.append(example)
+
+        if len(examples) >= params.batch_size:
+            src_max_len = max(len(ex['source']) for ex in examples[:params.batch_size])
+            src_padded, src_lengths = [], []
+            for ex in examples[:params.batch_size]:
+                src_seq = ex['source']
+                src_padded.append(src_seq[:src_max_len] + [params.pad_index] * max(0, src_max_len - len(src_seq)))
+                src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
+            src_padded = torch.tensor(src_padded, dtype=torch.long)
+            src_lengths = torch.tensor(src_lengths, dtype=torch.long)
+            yield {'source': src_padded, 'source_length':src_lengths}
+            examples = examples[params.batch_size:]
+    if len(examples) > 0:
+        src_max_len = max(len(ex['source']) for ex in examples)
+        src_padded, src_lengths = [], []
+        for ex in examples:
+            src_seq = ex['source']
+            src_padded.append(src_seq[:src_max_len] + [params.pad_index] * max(0, src_max_len - len(src_seq)))
+            src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
+        src_padded = torch.tensor(src_padded, dtype=torch.long)
+        src_lengths = torch.tensor(src_lengths, dtype=torch.long)
+        yield {'source': src_padded, 'source_length':src_lengths}
+
 
 def create_example(data, fields):
     example = {}
@@ -142,7 +173,6 @@ class DataIterator(object):
             for batch in self.batch_examples_keep_order(self.dataset, self.batch_size, constant=self.constant):
                 yield batch
 
-    # TODO The definition of Example class is changed.
     def batch_examples(self, data, batch_size, constant=False, mantissa_bits=2):
         max_length = self.params.max_sequence_size or batch_size
         min_length = 8

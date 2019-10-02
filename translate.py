@@ -4,7 +4,7 @@ import argparse
 from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
 from src.data.data_loader import load_data
 from src.model import build_model
-from src.data.vocab import Vocabulary
+from src.data.dataset import load_and_batch_input_data
 import torch
 
 def get_parser():
@@ -96,46 +96,15 @@ def get_parser():
 
     return parser
 
-def load_test_data(input_file, vocab_file, params):
-    vocab = Vocabulary(vocab_file)
-    examples = []
-    for line in open(input_file, 'r'):
-        example = {}
-        tokens = line.strip().split()
-        example['source'] = [vocab[tok] for tok in tokens] + [vocab.eos_index]
-        examples.append(example)
+    def main(params):
+        initialize_exp(params)
+        train_data = load_data(params.train_files, params, train=False, repeat=False)
+        model = build_model(params)
+        if params.tf_model_path != "":
+            model = load_tf_weights_in_tnmt(model, params.tf_model_path)
+        model.eval()
 
-        if len(examples) >= params.batch_size:
-            src_max_len = max(len(ex['source']) for ex in examples[:params.batch_size])
-            src_padded, src_lengths = [], []
-            for ex in examples[:params.batch_size]:
-                src_seq = ex['source']
-                src_padded.append(src_seq[:src_max_len] + [params.pad_index] * max(0, src_max_len - len(src_seq)))
-                src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
-            src_padded = torch.tensor(src_padded, dtype=torch.long)
-            src_lengths = torch.tensor(src_lengths, dtype=torch.long)
-            yield {'source': src_padded, 'source_length':src_lengths}
-            examples = examples[params.batch_size:]
-    if len(examples) > 0:
-        src_max_len = max(len(ex['source']) for ex in examples)
-        src_padded, src_lengths = [], []
-        for ex in examples:
-            src_seq = ex['source']
-            src_padded.append(src_seq[:src_max_len] + [params.pad_index] * max(0, src_max_len - len(src_seq)))
-            src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
-        src_padded = torch.tensor(src_padded, dtype=torch.long)
-        src_lengths = torch.tensor(src_lengths, dtype=torch.long)
-        yield {'source': src_padded, 'source_length':src_lengths}
-
-def main(params):
-    initialize_exp(params)
-    train_data = load_data(params.train_files, params, train=False, repeat=False)
-    model = build_model(params)
-    if params.tf_model_path != "":
-        model = load_tf_weights_in_tnmt(model, params.tf_model_path)
-    model.eval()
-
-    for batch in load_test_data(params.input_file, params.vocab_files[0], params):
+    for batch in load_and_batch_input_data(params.input_file, params):
         output, out_len = model(mode='test',
                                 src_seq=batch['source'],
                                 src_len=batch['source_length'])

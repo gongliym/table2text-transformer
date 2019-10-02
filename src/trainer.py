@@ -5,10 +5,9 @@ from logging import getLogger
 from collections import OrderedDict
 import numpy as np
 import torch
-from torch.nn import functional as F
 from torch.nn.utils import clip_grad_norm_
 
-from .utils import get_optimizer, to_cuda, concat_batches
+from .utils import get_optimizer, to_cuda
 from .utils import parse_lambda_config, update_lambdas
 from torch.utils.tensorboard import SummaryWriter
 
@@ -22,6 +21,30 @@ class Trainer(object):
         """
         Initialize trainer.
         """
+
+        # stopping criterion used for early stopping
+        if params.stopping_criterion != '':
+            split = params.stopping_criterion.split(',')
+            assert len(split) == 2 and split[1].isdigit()
+            self.decrease_counts_max = int(split[1])
+            self.decrease_counts = 0
+            if split[0][0] == '_':
+                self.stopping_criterion = (split[0][1:], False)
+            else:
+                self.stopping_criterion = (split[0], True)
+            self.best_stopping_criterion = -1e12 if self.stopping_criterion[1] else 1e12
+        else:
+            self.stopping_criterion = None
+            self.best_stopping_criterion = None
+
+        # validation metrics
+        self.metrics = []
+        metrics = [m for m in params.validation_metrics.split(',') if m != '']
+        for m in metrics:
+            m = (m[1:], False) if m[0] == '_' else (m, True)
+            self.metrics.append(m)
+        self.best_metrics = {metric: (-1e12 if biggest else 1e12) for (metric, biggest) in self.metrics}
+
         # training statistics
         self.epoch = 0
         self.n_total_iter = 0
@@ -192,7 +215,7 @@ class Trainer(object):
                 logger.info('New best score for %s: %.6f' % (metric, scores[metric]))
                 self.save_model('best-%s' % metric)
 
-    def checkpoint(self, scores):
+    def end_evaluation(self, scores):
         """
         End the epoch.
         """
@@ -274,6 +297,6 @@ class EncDecTrainer(Trainer):
         self.optimize(loss)
 
         # number of processed sentences / words
-        self.stats['processed_s'] += len_y.size(0)
-        self.stats['processed_w'] += len_y.sum().item()
+        self.stats['processed_s'] += tgt_len.size(0)
+        self.stats['processed_w'] += tgt_len.sum().item()
 

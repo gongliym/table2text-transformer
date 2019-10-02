@@ -1,10 +1,12 @@
 from __future__ import absolute_import, division, print_function
 
+import json
 import argparse
 from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
 from src.data.data_loader import load_data
 from src.model import build_model
 from src.trainer import EncDecTrainer
+from src.evaluation.evaluator import TransformerEvaluator
 
 def get_parser():
     """
@@ -78,8 +80,12 @@ def get_parser():
                         help="Clip gradients norm (0 to disable)")
     parser.add_argument("--lambda_mt", type=str, default="1",
                         help="MT coefficient")
-    parser.add_argument("--max_train_epoches", type=int, default=20,
+    parser.add_argument("--max_train_steps", type=int, default=1000000,
                         help="MT training epoches.")
+    parser.add_argument("--stopping_criterion", type=str, default="",
+                        help="Stopping criterion, and number of non-increase before stopping the experiment")
+    parser.add_argument("--validation_metrics", type=str, default="",
+                        help="Validation metrics")
 
     # reload pretrained embeddings / pretrained model / checkpoint
     parser.add_argument("--reload_model", type=str, default="",
@@ -89,6 +95,8 @@ def get_parser():
 
     # experiment parameters
     parser.add_argument("--save_periodic", type=int, default=0,
+                        help="Save the model periodically (0 to disable)")
+    parser.add_argument("--eval_periodic", type=int, default=2000,
                         help="Save the model periodically (0 to disable)")
     parser.add_argument("--no_cuda", type=bool_flag, default=False,
                         help="Avoid using CUDA when available")
@@ -110,11 +118,24 @@ def main(params):
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
 
     trainer = EncDecTrainer(model, train_data, params)
+    evaluator = TransformerEvaluator(trainer, params)
 
     trainer.checkpoint(None)
     while trainer.epoch <= params.max_train_epoches:
         trainer.mt_step(params.lambda_mt)
         trainer.iter()
+        if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
+            # evaluate perplexity
+            scores = evaluator.run_all_evals(trainer)
+            # print / JSON log
+            for k, v in scores.items():
+                logger.info("%s -> %.6f" % (k, v))
+            logger.info("__log__:%s" % json.dumps(scores))
+
+            # end of evaluation
+            trainer.save_best_model(scores)
+            trainer.save_periodic()
+            trainer.end_evaluation(scores)
 
 if __name__ == "__main__":
     # generate parser / parse parameters
