@@ -123,7 +123,7 @@ class PredLayer(nn.Module):
         Compute scores.
         """
         assert x.dim() == 2
-        return self.proj(x)
+        return F.log_softmax(self.proj(x), dim=1)
 
 
 class MultiHeadAttention(nn.Module):
@@ -622,6 +622,7 @@ class Transformer(nn.Module):
                     # end of sentence, or next word
                     if word_id == self.eos_index or cur_len + 1 == max_len:
                         generated_hyps[sent_id].add(generated[sent_id*beam_size+beam_id, :cur_len].clone(), value.item())
+                        # self.print_hyp(generated[sent_id*beam_size+beam_id, :cur_len], value.item())
                     else:
                         next_sent_beam.append((value, word_id, sent_id*beam_size+beam_id))
 
@@ -675,6 +676,9 @@ class Transformer(nn.Module):
         assert (decoded == self.eos_index).sum() == 2 * bs
 
         return decoded, tgt_len
+
+    def print_hyp(self, generated, score):
+        print(score, ' '.join([self.params.tgt_vocab.itos(x.item()) for x in generated]))
 
 
 class BeamHypotheses(object):
