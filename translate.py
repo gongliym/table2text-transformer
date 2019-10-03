@@ -27,15 +27,15 @@ def get_parser():
     parser.add_argument("--output", type=str,
                         help="Experiment dump path")
 
-    parser.add_argument("--decode_batch_size", type=int, default=2,
+    parser.add_argument("--decode_batch_size", type=int, default=1,
                         help="batch size")
-    parser.add_argument("--beam_size", type=int, default=1,
+    parser.add_argument("--beam_size", type=int, default=2,
                         help="beam size in beam search")
     parser.add_argument("--length_penalty", type=float, default=1.0,
                         help="length penalty in beam search")
     parser.add_argument("--early_stopping", type=bool_flag, default=True,
                         help="early stopping in beam search")
-    parser.add_argument("--no_cuda", type=bool_flag, default=False,
+    parser.add_argument("--no_cuda", type=bool_flag, default=True,
                         help="Avoid using CUDA when available")
     return parser
 
@@ -45,9 +45,7 @@ def main(params):
     reloaded = torch.load(params.model_path, map_location=device)
     model_params = AttrDict(reloaded['params'])
     model = build_model(model_params)
-    print(model.encoder.embeddings.weight)
     model.load_state_dict(reloaded['model'])
-    print(model.encoder.embeddings.weight)
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
     setattr(model_params, "decode_batch_size", params.decode_batch_size)
@@ -78,6 +76,7 @@ def main(params):
             target = ' '.join([model_params.tgt_vocab.itos(sent[idx].item()) for idx in range(len(sent))])
             print(target)
             outf.write(target+"\n")
+        exit(0)
     outf.close()
     restore_segmentation(params.output)
 
