@@ -77,7 +77,7 @@ def get_parser():
                         help="Load all data on memory.")
 
     # training parameters
-    parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,lr=0.0007",
+    parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,beta1=0.9,beta2=0.98,lr=0.0001",
                         help="Optimizer (SGD / RMSprop / Adam, etc.)")
     parser.add_argument("--clip_grad_norm", type=float, default=5,
                         help="Clip gradients norm (0 to disable)")

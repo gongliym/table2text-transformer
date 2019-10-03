@@ -257,8 +257,8 @@ class EncDecTrainer(Trainer):
         self.params = params
 
         # optimizers
-        # self.optimizer = get_optimizer(self.model.parameters(), self.params.optimizer)
-        self.optimizer = torch.optim.Adam(self.model.parameters())
+        self.optimizer = get_optimizer(self.model.parameters(), self.params.optimizer)
+        # self.optimizer = torch.optim.Adam(self.model.parameters())
 
         super().__init__(data, params)
 
