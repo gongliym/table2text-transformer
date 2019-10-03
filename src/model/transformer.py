@@ -466,9 +466,9 @@ class Transformer(nn.Module):
                                                      self.params.beam_size,
                                                      self.params.length_penalty,
                                                      self.params.early_stopping,
-                                                     max_len=200)
+                                                     max_len=max_len)
             else:
-                output, out_len = self.generate(encoder_output, src_len, max_len=200)
+                output, out_len = self.generate(encoder_output, src_len, max_len=max_len)
 
             return output, out_len
         else:
