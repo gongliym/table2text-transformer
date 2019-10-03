@@ -8,6 +8,7 @@ from src.model import build_model
 from src.trainer import EncDecTrainer
 from src.evaluation.evaluator import TransformerEvaluator
 
+
 def get_parser():
     """
     Generate a parameters parser.
@@ -53,7 +54,7 @@ def get_parser():
     parser.add_argument("--gelu_activation", type=bool_flag, default=False,
                         help="Use a GELU activation instead of ReLU")
 
-    ## data
+    # data
     parser.add_argument("--train_files", nargs=2, type=str, required=True,
                         help="Train data path")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
@@ -63,7 +64,7 @@ def get_parser():
     parser.add_argument("--encoding", type=str, default='utf-8',
                         help="Data encoding (utf-8)")
 
-    ## batch parameters
+    # batch parameters
     parser.add_argument("--max_sequence_size", type=int, default=256,
                         help="Maximum length of sentences (after BPE)")
     parser.add_argument("--truncate_data", type=bool_flag, default=True,
@@ -120,19 +121,19 @@ def get_parser():
                         help="decode batch size")
     return parser
 
+
 def main(params):
     logger = initialize_exp(params)
     # load data
     train_data = load_data(params.train_files, params, train=True, repeat=True)
     model = build_model(params)
 
-    #print(model.encoder.embeddings.weight.device)
-    #if params.tf_model_path != "":
-    #    model = load_tf_weights_in_tnmt(model, params.tf_model_path)
+    if params.tf_model_path != "":
+        model = load_tf_weights_in_tnmt(model, params.tf_model_path)
 
-    #print(model.encoder.embeddings.weight.device)
+    if params.device.type == 'cuda':
+        model = model.cuda()
 
-    # print(params.device)
     trainer = EncDecTrainer(model, train_data, params)
     evaluator = TransformerEvaluator(trainer, params)
 
@@ -151,6 +152,7 @@ def main(params):
             trainer.save_best_model(scores)
             trainer.save_periodic()
             trainer.end_evaluation(scores)
+
 
 if __name__ == "__main__":
     # generate parser / parse parameters
