@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from torch.nn.utils import clip_grad_norm_
 
-from .utils import get_optimizer, to_cuda
-from .utils import parse_lambda_config, update_lambdas
+from .optim import get_optimizer
+from .utils import to_cuda, parse_lambda_config, update_lambdas
 from torch.utils.tensorboard import SummaryWriter
 
 logger = getLogger()
@@ -23,6 +23,7 @@ class Trainer(object):
         """
 
         # stopping criterion used for early stopping
+        self.set_optimizer()
         if params.stopping_criterion != '':
             split = params.stopping_criterion.split(',')
             assert len(split) == 2 and split[1].isdigit()
@@ -57,6 +58,18 @@ class Trainer(object):
 
         # initialize lambda coefficients and their configurations
         parse_lambda_config(params)
+
+
+    def set_optimizer(self):
+        """
+        Set optimizer
+        :return:
+        """
+        params = self.params
+        # model optimizer (excluding memory values)
+        self.optimizer = get_optimizer(self.model.parameters(), params.optimizer)
+        # log
+        logger.info("Optimizers: %s" % ", ".join(self.optimizers.keys()))
 
     def optimize(self, loss):
         """
