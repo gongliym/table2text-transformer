@@ -14,12 +14,12 @@ def get_parser():
     Generate a parameters parser.
     """
     # parse parameters
-    parser = argparse.ArgumentParser(description="Dataset Tester")
+    parser = argparse.ArgumentParser(description="Train NMT")
 
     # main parameters
     parser.add_argument("--model_path", type=str, default="./model_training/",
                         help="Experiment dump path")
-    parser.add_argument("--exp_name", type=str, default="tmp",
+    parser.add_argument("--exp_name", type=str, default="nmt",
                         help="Experiment name")
     parser.add_argument("--exp_id", type=str, default="",
                         help="Experiment ID")

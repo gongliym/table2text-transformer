@@ -65,6 +65,7 @@ class TransformerEvaluator(Evaluator):
         :param eval_bleu:
         :return:
         """
+        self.model.eval()
 
         params = self.params
         step_num = self.trainer.n_total_iter

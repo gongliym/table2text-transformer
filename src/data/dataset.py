@@ -1,18 +1,15 @@
 from __future__ import absolute_import, division, print_function
 
 import io
-import random
 import math
-from contextlib import contextmanager
 from logging import getLogger
-from copy import deepcopy
 import numpy as np
-
 import torch
 
 from .vocab import Vocabulary
 
 logger = getLogger()
+
 
 global max_src_in_batch, max_tgt_in_batch
 def batch_size_fn(new, count, sofar):
@@ -26,6 +23,7 @@ def batch_size_fn(new, count, sofar):
     src_elements = count * max_src_in_batch
     tgt_elements = count * max_tgt_in_batch
     return max(src_elements, tgt_elements)
+
 
 def load_and_batch_input_data(input_file, params):
     assert hasattr(params, 'src_vocab')
@@ -46,7 +44,7 @@ def load_and_batch_input_data(input_file, params):
                 src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
             src_padded = torch.tensor(src_padded, dtype=torch.long)
             src_lengths = torch.tensor(src_lengths, dtype=torch.long)
-            yield {'source': src_padded, 'source_length':src_lengths}
+            yield {'source': src_padded, 'source_length': src_lengths}
             examples = examples[params.decode_batch_size:]
     if len(examples) > 0:
         src_max_len = max(len(ex['source']) for ex in examples)
@@ -57,7 +55,7 @@ def load_and_batch_input_data(input_file, params):
             src_lengths.append(len(src_padded[-1]) - max(0, src_max_len - len(src_seq)))
         src_padded = torch.tensor(src_padded, dtype=torch.long)
         src_lengths = torch.tensor(src_lengths, dtype=torch.long)
-        yield {'source': src_padded, 'source_length':src_lengths}
+        yield {'source': src_padded, 'source_length': src_lengths}
 
 
 def create_example(data, fields):
@@ -86,42 +84,6 @@ def create_batch(example_list, pad_index=0):
     tgt_lengths = torch.tensor(tgt_lengths, dtype=torch.long)
     return {"source": src_padded, "source_length": src_lengths,
             "target": tgt_padded, "target_length": tgt_lengths}
-
-
-class Example(object):
-    """Defines a single training or test example.
-    Stores each column of the example as an attribute.
-    """
-    @classmethod
-    def fromlist(cls, data, vocabs):
-        ex = cls()
-        for (name, vocab), sent in zip(vocabs, data):
-            setattr(ex, name, [vocab[t] for t in sent] + [vocab.eos_index])
-        return ex
-
-class Batch(object):
-
-    @classmethod
-    def fromExampleList(cls, minibatch, pad_index=0):
-        batch = cls()
-        src_batch = Batch.pad(minibatch, 'source', pad_index)
-        tgt_batch = Batch.pad(minibatch, 'target', pad_index)
-
-        setattr(batch, 'source', src_batch)
-        setattr(batch, 'target', tgt_batch)
-        return batch
-
-    @classmethod
-    def pad(cls, minibatch, field, pad_index=0):
-        max_len = max(len(getattr(x, field)) for x in minibatch)
-        padded, lengths = [], []
-        for x in minibatch:
-            x_field = getattr(x, field)
-            padded.append(x_field[:max_len] + [pad_index] * max(0, max_len - len(x_field)))
-            lengths.append(len(padded[-1]) - max(0, max_len - len(x_field)))
-        padded = torch.tensor(padded, dtype=torch.long)
-        lengths = torch.tensor(lengths, dtype=torch.long)
-        return (padded, lengths)
 
 
 class DataIterator(object):
@@ -216,13 +178,12 @@ class DataIterator(object):
                         yield create_batch(buckets[bucket_index][:bucket_batch_size], self.params.pad_index)
                         yield create_batch(buckets[bucket_index][bucket_batch_size:], self.params.pad_index)
                     elif len(buckets[bucket_index]) > 0:
-                        yield create+batch(buckets[bucket_index], self.params.pad_index)
+                        yield create_batch(buckets[bucket_index], self.params.pad_index)
 
                     buckets[bucket_index] = []
                 return
 
     def _example_length_fn(self, example):
-        #return max(len(example['source']), len(example['target']))
         return max(len(example['source']), len(example['target']))
 
     def _which_bucket_fn(self, length, buckets_min, buckets_max):
@@ -335,4 +296,3 @@ class TranslationDataset(object):
                             len(tgt_tokens) == 0 or len(tgt_tokens) + 1 > self.params.max_sequence_size:
                         continue
                     yield create_example([src_tokens, tgt_tokens], self.fields)
-

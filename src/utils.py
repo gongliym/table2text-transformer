@@ -10,7 +10,6 @@ import re
 import sys
 import pickle
 import random
-import inspect
 import getpass
 import argparse
 import subprocess

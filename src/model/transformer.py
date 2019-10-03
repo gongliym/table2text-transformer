@@ -279,17 +279,13 @@ class TransformerEncoder(nn.Module):
         # generate masks
         mask, attn_mask = get_masks(slen, src_len, causal=False)
 
-        # positions
-        positions = src_seq.new(slen).long()
-        positions = torch.arange(slen, out=positions).unsqueeze(0)
-
         # embeddings
         tensor = self.embeddings(src_seq)
         tensor = tensor * (self.dim ** 0.5)
         tensor = tensor + self.bias
         tensor = add_timing_signal(tensor)
-        tensor = F.dropout(tensor, p=self.residual_dropout, training=self.training)
         tensor *= mask.unsqueeze(-1).to(tensor.dtype)
+        tensor = F.dropout(tensor, p=self.residual_dropout, training=self.training)
 
         # transformer layers
         for i in range(self.n_layers):

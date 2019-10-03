@@ -12,8 +12,5 @@ def build_model(params):
             logger.info("Trainable parameter: %s %s" % (name, parameter.size()))
             total_num_parameters += parameter.numel()
     logger.info("Total trainable parameter number: %d" % total_num_parameters)
+    return model
 
-    if params.device.type == 'cuda':
-        return model.cuda()
-    else:
-        return model
