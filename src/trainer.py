@@ -108,8 +108,8 @@ class Trainer(object):
 
         # transformer learning rate
         lr = self.optimizer.param_groups[0]['lr']
-        n_step = self.optimizer.param_groups[0]['num_updates']
-        writer.add_scalar('learning_rate', lr, n_step)
+        #n_step = self.optimizer.param_groups[0]['num_updates']
+        writer.add_scalar('learning_rate', lr, self.n_total_iter)
 
         s_lr = " - LR = {:.4e}".format(lr)
 
