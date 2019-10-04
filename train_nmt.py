@@ -3,8 +3,6 @@ from __future__ import absolute_import, division, print_function
 import json
 import argparse
 
-from torch.utils.tensorboard import SummaryWriter
-
 from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
 from src.data.data_loader import load_data
 from src.model import build_model
@@ -127,7 +125,6 @@ def get_parser():
 
 def main(params):
     logger = initialize_exp(params)
-    writer = SummaryWriter()
     # load data
     train_data = load_data(params.train_files, params, train=True, repeat=True)
     model = build_model(params)
@@ -151,7 +148,7 @@ def main(params):
             for k, v in scores.items():
                 logger.info("%s -> %.6f" % (k, v))
             logger.info("__log__:%s" % json.dumps(scores))
-            writer.add_scalar('Evaluation/nmt_bleu', scores['nmt_bleu'], self.n_total_iter)
+            params.tensorboard_writer.add_scalar('Evaluation/nmt_bleu', scores['nmt_bleu'], trainer.n_total_iter)
 
             # end of evaluation
             trainer.save_best_model(scores)

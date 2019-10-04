@@ -9,10 +9,8 @@ from torch.nn.utils import clip_grad_norm_
 
 from .optim import get_optimizer
 from .utils import to_cuda, parse_lambda_config, update_lambdas
-from torch.utils.tensorboard import SummaryWriter
 
 logger = getLogger()
-writer = SummaryWriter()
 
 
 class Trainer(object):
@@ -21,6 +19,7 @@ class Trainer(object):
         """
         Initialize trainer.
         """
+        self.tensorboard_writer = params.tensorboard_writer
 
         # stopping criterion used for early stopping
         self.set_optimizer()
@@ -120,7 +119,7 @@ class Trainer(object):
         # transformer learning rate
         lr = self.optimizer.param_groups[0]['lr']
         #n_step = self.optimizer.param_groups[0]['num_updates']
-        writer.add_scalar('learning_rate', lr, self.n_total_iter)
+        self.tensorboard_writer.add_scalar('transformer/lr', lr, self.n_total_iter)
 
         s_lr = " - LR = {:.4e}".format(lr)
 
@@ -150,7 +149,7 @@ class Trainer(object):
         else:
             data['model'] = self.model.state_dict()
 
-        data['params'] = {k: v for k, v in self.params.__dict__.items()}
+        data['params'] = {k: v for k, v in self.params.__dict__.items() if k!="tensorboard_writer"}
 
         torch.save(data, path)
 
@@ -166,7 +165,7 @@ class Trainer(object):
         data['model'] = self.model.state_dict()
         data['model' + '_optimizer'] = self.optimizer.state_dict()
 
-        data['params'] = {k: v for k, v in self.params.__dict__.items()}
+        data['params'] = {k: v for k, v in self.params.__dict__.items() if k!="tensorboard_writer"}
 
         checkpoint_path = os.path.join(self.params.model_path, 'checkpoint.pth')
         logger.info("Saving checkpoint to %s ..." % checkpoint_path)
@@ -255,7 +254,7 @@ class Trainer(object):
 
         for name, parameter in self.model.named_parameters():
             if parameter.requires_grad:
-                writer.add_histogram(name, parameter.data)
+                self.tensorboard_writer.add_histogram(name, parameter.data)
 
 
 class EncDecTrainer(Trainer):
@@ -301,7 +300,7 @@ class EncDecTrainer(Trainer):
         self.stats['loss'].append(loss.item())
 
         # Tensorboard
-        writer.add_scalar('transformer/loss', loss.item(), self.n_total_iter)
+        self.tensorboard_writer.add_scalar('transformer/loss', loss.item(), self.n_total_iter)
 
         loss = lambda_coeff * loss
         # optimize

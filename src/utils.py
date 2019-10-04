@@ -16,6 +16,7 @@ import subprocess
 import numpy as np
 import torch
 from torch import optim
+from torch.utils.tensorboard import SummaryWriter
 
 from .logger import create_logger
 
@@ -83,6 +84,7 @@ def initialize_exp(params):
 
     # check experiment name
     assert len(params.exp_name.strip()) > 0
+    params.tensorboard_writer = SummaryWriter(log_dir=os.path.join(params.model_path, 'tensorboard'))
 
     # create a logger
     logger = create_logger(os.path.join(params.model_path, 'train.log'), rank=getattr(params, 'global_rank', 0))
