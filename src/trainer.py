@@ -68,8 +68,6 @@ class Trainer(object):
         params = self.params
         # model optimizer (excluding memory values)
         self.optimizer = get_optimizer(self.model.parameters(), params.optimizer)
-        # log
-        logger.info("Optimizers: %s" % ", ".join(self.optimizers.keys()))
 
     def optimize(self, loss):
         """
@@ -271,7 +269,6 @@ class EncDecTrainer(Trainer):
 
         # optimizers
         self.optimizer = get_optimizer(self.model.parameters(), self.params.optimizer)
-        # self.optimizer = torch.optim.Adam(self.model.parameters())
 
         super().__init__(data, params)
 

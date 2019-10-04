@@ -55,6 +55,17 @@ def smoothed_softmax_cross_entropy_with_logits(logits, labels, smoothing=0.0):
         return loss
 
     log_prb = F.log_softmax(logits, dim=1)
+
+    _, vocab_size = log_prb.size()
+
+    n = vocab_size.float() - 1.0
+    p = 1.0 - smoothing
+    q = smoothing / n
+
+    # Normalizing constant is the best cross-entropy value with soft
+    # targets. We subtract it just for readability, makes no difference on
+    # learning
+    normalizing = -(p * torch.log(p) + n * q * torch.log(q + 1e-20))
     return  F.nll_loss(log_prb, labels) * (1 - smoothing) - log_prb.mean() * smoothing
 
 def gelu(x):
