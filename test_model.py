@@ -1,9 +1,11 @@
 from __future__ import absolute_import, division, print_function
 
 import argparse
+from torch.nn.utils import clip_grad_norm_
 from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
 from src.data.data_loader import load_data
 from src.model import build_model
+from src.optim import get_optimizer
 
 def get_parser():
     """
@@ -70,6 +72,12 @@ def get_parser():
     parser.add_argument("--on_memory", type=bool_flag, default=False,
                         help="Load all data on memory.")
 
+    # training parameters
+    parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,beta1=0.9,beta2=0.98,lr=0.0001",
+                        help="Optimizer (SGD / RMSprop / Adam, etc.)")
+    parser.add_argument("--clip_grad_norm", type=float, default=5,
+                        help="Clip gradients norm (0 to disable)")
+
     # experiment parameters
     parser.add_argument("--save_periodic", type=int, default=0,
                         help="Save the model periodically (0 to disable)")
@@ -91,7 +99,9 @@ def main(params):
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
 
-    model.eval()
+    optimizer = get_optimizer(model.parameters(), params.optimizer)
+    model.train()
+
     for batch in train_data:
         loss = model(mode='train',
                      src_seq=batch['source'],
@@ -99,7 +109,18 @@ def main(params):
                      tgt_seq=batch['target'],
                      tgt_len=batch['target_length'])
         print(loss)
-        #print(batch)
+
+        optimizer.zero_grad()
+        loss.backward()
+        # clip gradients
+        # if params.clip_grad_norm > 0:
+        #     clip_grad_norm_(model.parameters(), params.clip_grad_norm)
+
+        for name, parameter in model.named_parameters():
+            if parameter.requires_grad:
+                print(name, parameter.grad)
+
+
 
 if __name__ == "__main__":
     # generate parser / parse parameters
