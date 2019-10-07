@@ -298,38 +298,3 @@ class TranslationDataset(object):
                     yield create_example([src_tokens, tgt_tokens], self.fields)
 
 
-class Table2TextDataset(object):
-    """
-    table to text dataset.
-    """
-
-    def __init__(self, table_file, summary_file, table_vocab_file, summary_vocab_file, params):
-        """
-        """
-        self.params = params
-        self.table_file = table_file
-        self.summary_file = summary_file
-        self.table_vocab_file = table_vocab_file
-        self.summary_vocab_file = summary_vocab_file
-
-        self.src_vocab = Vocabulary(table_vocab_file)
-        self.tgt_vocab = Vocabulary(summary_vocab_file)
-
-        self.fields = [('source', self.table_vocab), ('target', self.summary_vocab)]
-
-        if hasattr(params, 'src_vocab') or hasattr(params, 'tgt_vocab'):
-            assert params.src_vocab == self.src_vocab
-            assert params.tgt_vocab == self.tgt_vocab
-        else:
-            params.src_vocab = self.src_vocab
-            params.tgt_vocab = self.tgt_vocab
-            params.src_vocab_size = len(self.src_vocab)
-            params.tgt_vocab_size = len(self.tgt_vocab)
-            params.pad_index = params.tgt_vocab_size.pad_index
-            params.eos_index = params.tgt_vocab_size.eos_index
-            params.unk_index = params.tgt_vocab_size.unk_index
-
-        self.data_size = -1
-
-        # here we only implement the on-memory mode
-        self.examples = []
