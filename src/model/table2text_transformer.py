@@ -9,6 +9,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .transformer import TransformerDecoder
+from .layers import Embedding, Linear, MultiHeadAttention, TransformerFFN
+from .layers import add_timing_signal, smoothed_softmax_cross_entropy_with_logits
+from .layers import gelu, get_masks
 
 logger = getLogger()
 
@@ -85,7 +88,8 @@ class TableEncoder(nn.Module):
         self.pad_index = params.pad_index
 
         # model parameters
-        self.dim = params.model_dim // 4  # 512 by default
+        self.dim = params.model_dim  # 512 by default
+        self.emb_dim = params.model_dim // 4  # 512 by default
         self.hidden_dim = params.hidden_dim  # 2048 by default
         self.num_heads = params.num_heads  # 8 by default
         assert self.dim % self.num_heads == 0, 'transformer dim must be a multiple of num_heads'
@@ -97,7 +101,7 @@ class TableEncoder(nn.Module):
         self.max_sequence_size = params.max_sequence_size
 
         # embeddings
-        self.embeddings = Embedding(self.n_words, self.dim)
+        self.embeddings = Embedding(self.n_words, self.emb_dim)
         # don't know why, THUMT is doing this
         self.bias = nn.Parameter(torch.zeros(self.dim))
 
@@ -119,7 +123,7 @@ class TableEncoder(nn.Module):
                                             gelu_activation=params.gelu_activation))
             self.layer_norm2.append(nn.LayerNorm(self.dim, eps=1e-6))
         
-    def forward(self, x1, x2, x3, x4, lengths)
+    def forward(self, x1, x2, x3, x4, lengths):
         """
         Inputs:
             `src_seq` LongTensor(bs, slen), containing word indices
@@ -164,7 +168,7 @@ class Data2TextTransformer(nn.Module):
     """
 
     def __init__(self, params):
-        super(Transformer, self).__init__()
+        super(Data2TextTransformer, self).__init__()
         self.params = params
         self.eos_index = params.eos_index
         self.pad_index = params.pad_index
@@ -184,7 +188,7 @@ class Data2TextTransformer(nn.Module):
         self.sm_pred_layer = SMPredLayer(params)
 
         if params.share_embedding_and_softmax_weights:
-            self.pred_layer.proj.weight = self.decoder.embeddings.weight
+            self.sm_pred_layer.proj.weight = self.decoder.embeddings.weight
 
         if params.share_source_target_embedding:
             self.encoder.embeddings.weight = self.decoder.embeddings.weight
@@ -203,12 +207,12 @@ class Data2TextTransformer(nn.Module):
             assert features['summary'] is not None and features['summary_lengths'] is not None
             tgt_seq = features['summary']
             tgt_len = features['summary_lengths']
-            encoder_output = self.encoder(features)
+            encoder_output = self.encoder(x1, x2, x3, x4, src_len)
             decoder_output = self.decoder(tgt_seq, tgt_len, src_enc=encoder_output, src_len=src_len)
             pred_mask = torch.arange(tgt_len.max(), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
             masked_decoder_output = decoder_output[pred_mask]
             masked_y = tgt_seq.masked_select(pred_mask)
-            loss = self.pred_layer(x=masked_decoder_output, y=masked_y, get_scores=False)
+            loss = self.sm_pred_layer(x=masked_decoder_output, y=masked_y, get_scores=False)
             return loss
         elif mode == 'test':
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
@@ -262,7 +266,7 @@ class Data2TextTransformer(nn.Module):
                                   )
             assert tensor.size() == (bs, 1, self.dim)
             tensor = tensor.data[:, -1, :] # (bs, dim)
-            scores = self.pred_layer.get_scores(tensor) # (bs, vocab_size)
+            scores = self.sm_pred_layer.get_scores(tensor) # (bs, vocab_size)
 
             # select next words: sample or greedy
             if sample_temperature is None:
@@ -340,7 +344,7 @@ class Data2TextTransformer(nn.Module):
                                   )
             assert tensor.size() == (bs*beam_size, 1, self.dim)
             tensor = tensor.data[:, -1, :] # (bs * beam_size, dim)
-            scores = self.pred_layer.get_scores(tensor) # (bs * beam_size, n_words)
+            scores = self.sm_pred_layer.get_scores(tensor) # (bs * beam_size, n_words)
 
             # select next words with scores
             _scores = scores + beam_scores[:, None].expand_as(scores) # (bs*beam_size, n_words)

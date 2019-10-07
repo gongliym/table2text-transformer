@@ -290,7 +290,7 @@ class EncDecTrainer(Trainer):
 
         if params.device.type == 'cuda':
             for each in batch:
-                batch[each] = to_cuda(batch[each])
+                batch[each] = to_cuda(batch[each])[0]
             #src_seq, src_len, tgt_seq, tgt_len = to_cuda(src_seq, src_len, tgt_seq, tgt_len)
 
         # encode source sentence
@@ -305,6 +305,6 @@ class EncDecTrainer(Trainer):
         self.optimize(loss)
 
         # number of processed sentences / words
-        self.stats['processed_s'] += tgt_len.size(0)
-        self.stats['processed_w'] += tgt_len.sum().item()
+        self.stats['processed_s'] += batch['summary_lengths'].size(0)
+        self.stats['processed_w'] += batch['summary_lengths'].sum().item()
 

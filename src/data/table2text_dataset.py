@@ -52,14 +52,14 @@ def create_batch(example_list, pad_index=0):
         summaries.append(example['summary'][:max_len] + [pad_index] * max(0, max_len - len(example['summary'])))
         summary_lengths.append(len(summaries[-1]) - max(0, max_len - len(example['summary'])))
 
-    table_entities = torch.tensor(table_entities, dtype=torch.int)
-    table_typies = torch.tensor(table_typies, dtype=torch.int)
-    table_values = torch.tensor(table_values, dtype=torch.int)
-    table_features = torch.tensor(table_features, dtype=torch.int)
-    table_labels = torch.tensor(table_labels, dtype=torch.bool)
-    table_lengths = torch.tensor(table_lengths, dtype=torch.int)
-    summaries = torch.tensor(summaries, dtype=torch.int)
-    summary_lengths = torch.tensor(summary_lengths, dtype=torch.int)
+    table_entities = torch.tensor(table_entities, dtype=torch.long)
+    table_typies = torch.tensor(table_typies, dtype=torch.long)
+    table_values = torch.tensor(table_values, dtype=torch.long)
+    table_features = torch.tensor(table_features, dtype=torch.long)
+    table_labels = torch.tensor(table_labels, dtype=torch.long)
+    table_lengths = torch.tensor(table_lengths, dtype=torch.long)
+    summaries = torch.tensor(summaries, dtype=torch.long)
+    summary_lengths = torch.tensor(summary_lengths, dtype=torch.long)
     return {
         'table_entity': table_entities,
         'table_type': table_typies,
@@ -161,10 +161,9 @@ class Table2TextDataIterator(object):
         size_sofar = 0
         while True:
             self.init_epoch()
+            example_indexes = list(range(len(data)))
             if shuffle:
-                example_indexes = random.shuffle(range(len(data)))
-            else:
-                example_indexes = range(len(data))
+                random.shuffle(example_indexes)
             for idx in example_indexes:
                 example = data[idx]
                 if constant:

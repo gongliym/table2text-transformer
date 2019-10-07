@@ -1,5 +1,6 @@
 from logging import getLogger
 from .transformer import Transformer
+from .table2text_transformer import Data2TextTransformer
 
 logger = getLogger()
 

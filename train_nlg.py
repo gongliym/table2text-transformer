@@ -52,7 +52,7 @@ def get_parser():
                         help="Use a GELU activation instead of ReLU")
 
     # data
-    parser.add_argument("--train_files", nargs=2, type=str, required=True,
+    parser.add_argument("--train_files", nargs='+', type=str, required=True,
                         help="Train data path")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
                         help="Vocabulary data path")
@@ -124,7 +124,7 @@ def get_parser():
 def main(params):
     logger = initialize_exp(params)
     # load data
-    train_data = load_data(params.train_files, params, train=True, repeat=True)
+    train_data = load_data(params.train_files, params, train=True, repeat=True, model='table2text-transformer')
     model = build_model(params, model="table2text-transformer")
 
     if params.device.type == 'cuda':
@@ -134,7 +134,7 @@ def main(params):
     evaluator = TransformerEvaluator(trainer, params)
 
     while trainer.n_total_iter <= params.max_train_steps:
-        trainer.mt_step(params.lambda_mt)
+        trainer.mt_step(params.lambda_sm)
         trainer.iter()
         if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
             # evaluate perplexity
