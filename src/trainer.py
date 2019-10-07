@@ -119,7 +119,7 @@ class Trainer(object):
         # transformer learning rate
         lr = self.optimizer.param_groups[0]['lr']
         #n_step = self.optimizer.param_groups[0]['num_updates']
-        self.tensorboard_writer.add_scalar('transformer/lr', lr, self.n_total_iter)
+        self.tensorboard_writer.add_scalar('Training/lr', lr, self.n_total_iter)
 
         s_lr = " - LR = {:.4e}".format(lr)
 
@@ -283,24 +283,22 @@ class EncDecTrainer(Trainer):
         self.model.train()
 
         batch = next(self.data)
-        src_seq = batch['source']
-        src_len = batch['source_length']
-        tgt_seq = batch['target']
-        tgt_len = batch['target_length']
+        #src_seq = batch['source']
+        #src_len = batch['source_length']
+        #tgt_seq = batch['target']
+        #tgt_len = batch['target_length']
 
         if params.device.type == 'cuda':
-            src_seq, src_len, tgt_seq, tgt_len = to_cuda(src_seq, src_len, tgt_seq, tgt_len)
+            for each in batch:
+                batch[each] = to_cuda(batch[each])
+            #src_seq, src_len, tgt_seq, tgt_len = to_cuda(src_seq, src_len, tgt_seq, tgt_len)
 
         # encode source sentence
-        loss = self.model(src_seq=src_seq,
-                          src_len=src_len,
-                          tgt_seq=tgt_seq,
-                          tgt_len=tgt_len,
-                          mode='train')
+        loss = self.model(batch, mode='train')
         self.stats['loss'].append(loss.item())
 
         # Tensorboard
-        self.tensorboard_writer.add_scalar('transformer/loss', loss.item(), self.n_total_iter)
+        self.tensorboard_writer.add_scalar('Training/loss', loss.item(), self.n_total_iter)
 
         loss = lambda_coeff * loss
         # optimize

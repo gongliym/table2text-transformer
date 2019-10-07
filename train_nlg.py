@@ -125,10 +125,7 @@ def main(params):
     logger = initialize_exp(params)
     # load data
     train_data = load_data(params.train_files, params, train=True, repeat=True)
-    model = build_model(params)
-
-    if params.tf_model_path != "":
-        model = load_tf_weights_in_tnmt(model, params.tf_model_path)
+    model = build_model(params, model="table2text-transformer")
 
     if params.device.type == 'cuda':
         model = model.cuda()
