@@ -23,6 +23,67 @@ def batch_size_fn(new, count, sofar):
     tgt_elements = count * max_tgt_in_batch
     return tgt_elements
 
+def load_and_batch_table_data(input_file, params):
+    assert hasattr(params, 'src_vocab')
+    vocab = params.src_vocab
+    examples = []
+    for line in open(input_file, 'r'):
+        example = {'table_entity':[], 'table_type':[], 'table_value':[], 'table_feature':[]}
+        for token in line.strip().split():
+            fields = token.split('|')
+            assert len(fields) == 4
+            example['table_entity'].append(vocab[fields[0]])
+            example['table_type'].append(vocab[fields[1]])
+            example['table_value'].append(vocab[fields[2]])
+            example['table_feature'].append(vocab[fields[3]])
+        examples.append(example)
+
+        if len(examples) >= params.decode_batch_size:
+            table_entities, table_typies, table_values, table_features = [], [], [], []
+            table_lengths = []
+            for ex in examples[:params.decode_batch_size]:
+                table_entities.append(ex['table_entity'])
+                table_typies.append(ex['table_type'])
+                table_values.append(ex['table_value'])
+                table_features.append(ex['table_feature'])
+                table_lengths.append(len(ex['table_entity']))
+
+            table_entities = torch.tensor(table_entities, dtype=torch.long)
+            table_typies = torch.tensor(table_typies, dtype=torch.long)
+            table_values = torch.tensor(table_values, dtype=torch.long)
+            table_features = torch.tensor(table_features, dtype=torch.long)
+            table_lengths = torch.tensor(table_lengths, dtype=torch.long)
+            yield {
+                'table_entity': table_entities,
+                'table_type': table_typies,
+                'table_value': table_values,
+                'table_feature': table_features,
+                'table_length': table_lengths
+            }
+            examples = examples[params.decode_batch_size:]
+    if len(examples) > 0:
+        table_entities, table_typies, table_values, table_features = [], [], [], []
+        table_lengths = []
+        for ex in examples:
+            table_entities.append(ex['table_entity'])
+            table_typies.append(ex['table_type'])
+            table_values.append(ex['table_value'])
+            table_features.append(ex['table_feature'])
+            table_lengths.append(len(ex['table_entity']))
+
+        table_entities = torch.tensor(table_entities, dtype=torch.long)
+        table_typies = torch.tensor(table_typies, dtype=torch.long)
+        table_values = torch.tensor(table_values, dtype=torch.long)
+        table_features = torch.tensor(table_features, dtype=torch.long)
+        table_lengths = torch.tensor(table_lengths, dtype=torch.long)
+        yield {
+            'table_entity': table_entities,
+            'table_type': table_typies,
+            'table_value': table_values,
+            'table_feature': table_features,
+            'table_length': table_lengths
+        }
+
 def create_batch(example_list, pad_index=0):
     # source sides are fixed length table data
     assert 1 == len(set([len(example['table_entity']) for example in example_list]))
@@ -68,7 +129,7 @@ def create_batch(example_list, pad_index=0):
         'table_label': table_labels,
         'table_length': table_lengths, 
         'summary': summaries,
-        'summary_lengths': summary_lengths
+        'summary_length': summary_lengths
     }
     
 def create_example(table_seq, table_label_seq, summary_seq, table_vocab, summary_vocab):
@@ -130,6 +191,7 @@ class Table2TextDataIterator(object):
         self.iterations_this_epoch = 0
         if not self.repeat:
             self.iterations = 0
+        logger.info("Starting data epoch: %d" % self.epoches)
 
     @property
     def epoch(self):

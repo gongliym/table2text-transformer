@@ -291,13 +291,17 @@ class Transformer(nn.Module):
         if params.share_source_target_embedding:
             self.encoder.embeddings.weight = self.decoder.embeddings.weight
 
-    def forward(self, src_seq, src_len, tgt_seq=None, tgt_len=None, mode='train'):
+    def forward(self, features, mode='train'):
         """
         Forward function with different forward modes.
         ### Small hack to handle PyTorch distributed.
         """
+        src_seq = features['source']
+        src_len = features['source_length']
         if mode == 'train' or mode == 'valid':
-            assert tgt_seq is not None and tgt_len is not None
+            assert features['target'] is not None and features['target_length'] is not None
+            tgt_seq = features['target']
+            tgt_len = features['target_length']
             encoder_output = self.encoder(src_seq, src_len)
             decoder_output = self.decoder(tgt_seq, tgt_len, src_enc=encoder_output, src_len=src_len)
             pred_mask = torch.arange(tgt_len.max(), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]

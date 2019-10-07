@@ -46,7 +46,6 @@ class Trainer(object):
         self.best_metrics = {metric: (-1e12 if biggest else 1e12) for (metric, biggest) in self.metrics}
 
         # training statistics
-        self.epoch = 0
         self.n_total_iter = 0
         self.n_sentences = 0
         self.stats = OrderedDict([('processed_s', 0), ('processed_w', 0), ('loss', [])])
@@ -107,7 +106,7 @@ class Trainer(object):
         if self.n_total_iter % 10 != 0:
             return
 
-        s_iter = "Batch %i - Step %i - " % (self.epoch, self.n_total_iter)
+        s_iter = "Step %i - " % (self.n_total_iter)
         s_stat = ' || '.join([
             '{}: {:7.4f}'.format(k, np.mean(v)) for k, v in self.stats.items()
             if type(v) is list and len(v) > 0
@@ -158,7 +157,6 @@ class Trainer(object):
         Checkpoint the experiment.
         """
         data = {
-            'epoch': self.epoch,
             'n_total_iter': self.n_total_iter,
         }
 
@@ -193,12 +191,11 @@ class Trainer(object):
         self.optimizer.load_state_dict(data['model' + '_optimizer'])
 
         # reload main metrics
-        self.epoch = data['epoch'] + 1
         self.n_total_iter = data['n_total_iter']
 
         assert self.params.src_vocab == data['params'].src_vocab
         assert self.params.tgt_vocab == data['params'].tgt_vocab
-        logger.warning('Checkpoint reloaded. Resuming at epoch %i ...' % self.epoch)
+        logger.warning('Checkpoint reloaded. Resuming at step %i ...' % self.n_total_iter)
 
     def save_periodic(self):
         """
@@ -250,7 +247,6 @@ class Trainer(object):
                     os.system('scancel ' + os.environ['SLURM_JOB_ID'])
                 exit()
         self.save_checkpoint()
-        self.epoch += 1
 
         for name, parameter in self.model.named_parameters():
             if parameter.requires_grad:
@@ -283,15 +279,10 @@ class EncDecTrainer(Trainer):
         self.model.train()
 
         batch = next(self.data)
-        #src_seq = batch['source']
-        #src_len = batch['source_length']
-        #tgt_seq = batch['target']
-        #tgt_len = batch['target_length']
 
         if params.device.type == 'cuda':
             for each in batch:
                 batch[each] = to_cuda(batch[each])[0]
-            #src_seq, src_len, tgt_seq, tgt_len = to_cuda(src_seq, src_len, tgt_seq, tgt_len)
 
         # encode source sentence
         loss = self.model(batch, mode='train')
@@ -305,6 +296,38 @@ class EncDecTrainer(Trainer):
         self.optimize(loss)
 
         # number of processed sentences / words
-        self.stats['processed_s'] += batch['summary_lengths'].size(0)
-        self.stats['processed_w'] += batch['summary_lengths'].sum().item()
+        self.stats['processed_s'] += batch['target_length'].size(0)
+        self.stats['processed_w'] += batch['target_length'].sum().item()
+
+    def sm_step(self, lambda_coeff):
+        """
+        Machine translation step.
+        Can also be used for denoising auto-encoding.
+        """
+        assert lambda_coeff >= 0
+        if lambda_coeff == 0:
+            return
+        params = self.params
+        self.model.train()
+
+        batch = next(self.data)
+
+        if params.device.type == 'cuda':
+            for each in batch:
+                batch[each] = to_cuda(batch[each])[0]
+
+        # encode source sentence
+        loss = self.model(batch, mode='train')
+        self.stats['loss'].append(loss.item())
+
+        # Tensorboard
+        self.tensorboard_writer.add_scalar('Training/loss', loss.item(), self.n_total_iter)
+
+        loss = lambda_coeff * loss
+        # optimize
+        self.optimize(loss)
+
+        # number of processed sentences / words
+        self.stats['processed_s'] += batch['summary_length'].size(0)
+        self.stats['processed_w'] += batch['summary_length'].sum().item()
 

@@ -7,7 +7,8 @@ import torch
 from torch.nn import functional as F
 
 from src.utils import to_cuda, restore_segmentation, concat_batches
-from src.data.dataset import load_and_batch_input_data
+from src.data.translation_dataset import load_and_batch_input_data
+from src.data.table2text_dataset import load_and_batch_table_data
 
 
 BLEU_SCRIPT_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'multi-bleu.perl')
@@ -32,15 +33,20 @@ class Evaluator(object):
         params.hyp_path = os.path.join(params.model_path, 'hypotheses')
         subprocess.Popen('mkdir -p %s' % params.hyp_path, shell=True).wait()
 
-    def run_all_evals(self, trainer):
+    def run_all_evals(self, iter_num, model):
         """
         Run all evaluation
         :param trainer:
         :return:
         """
-        scores = OrderedDict({'iter': trainer.n_total_iter})
+        scores = OrderedDict({'iter': iter_num})
         with torch.no_grad():
-            self.evaluate_nmt(scores)
+            if model == 'transformer':
+                self.evaluate_nmt(scores)
+            elif model == 'table2text-transformer':
+                self.evaluate_nlg(scores)
+            else:
+                raise Exception("Unkown model name. %s" % model)
         return scores
 
 class TransformerEvaluator(Evaluator):
@@ -74,7 +80,52 @@ class TransformerEvaluator(Evaluator):
         for batch in load_and_batch_input_data(params.valid_files[0], params):
             if params.device.type == 'cuda':
                 for each in batch:
-                    batch[each] = to_cuda(batch[each])
+                    batch[each] = to_cuda(batch[each])[0]
+                #src_seq, src_len = to_cuda(batch['source'], batch['source_length'])
+            output, out_len = self.model(batch, mode='test')
+
+            for j in range(output.size(0)):
+                sent = output[j,:]
+                delimiters = (sent == params.eos_index).nonzero().view(-1)
+                assert len(delimiters) >= 1 and delimiters[0].item() == 0
+                sent = sent[1:] if len(delimiters) == 1 else sent[1:delimiters[1]]
+                target = ' '.join([params.tgt_vocab.itos(sent[idx].item()) for idx in range(len(sent))])
+                hypotheses.append(target)
+
+        # hypothesis / reference paths
+        hyp_name = 'eval{0}.valid.txt'.format(step_num)
+        hyp_path = os.path.join(params.hyp_path, hyp_name)
+        ref_path = params.valid_files[1]
+
+        # export sentences to hypothesis file / restore BPE segmentation
+        with open(hyp_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(hypotheses) + '\n')
+        restore_segmentation(hyp_path)
+
+        # evaluate BLEU score
+        bleu_info = eval_moses_bleu(ref_path, hyp_path)
+        bleu_score = float(bleu_info[7:bleu_info.index(',')])
+        logger.info("BLEU %s %s : %s" % (hyp_path, ref_path, bleu_info))
+        scores['nmt_bleu'] = bleu_score
+
+    def evaluate_nlg(self, scores):
+        """
+        Evaluate perplexity and next word prediction accuracy
+        :param scores:
+        :param data_set:
+        :param eval_bleu:
+        :return:
+        """
+        self.model.eval()
+
+        params = self.params
+        step_num = self.trainer.n_total_iter
+
+        hypotheses = []
+        for batch in load_and_batch_table_data(params.valid_files[0], params):
+            if params.device.type == 'cuda':
+                for each in batch:
+                    batch[each] = to_cuda(batch[each])[0]
                 #src_seq, src_len = to_cuda(batch['source'], batch['source_length'])
             output, out_len = self.model(batch, mode='test')
 

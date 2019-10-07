@@ -100,7 +100,7 @@ def get_parser():
     # experiment parameters
     parser.add_argument("--save_periodic", type=int, default=0,
                         help="Save the model periodically (0 to disable)")
-    parser.add_argument("--eval_periodic", type=int, default=2000,
+    parser.add_argument("--eval_periodic", type=int, default=5000,
                         help="Save the model periodically (0 to disable)")
     parser.add_argument("--no_cuda", type=bool_flag, default=False,
                         help="Avoid using CUDA when available")
@@ -112,7 +112,7 @@ def get_parser():
                         help="is master")
 
     # evaluation
-    parser.add_argument("--beam_size", type=int, default=1,
+    parser.add_argument("--beam_size", type=int, default=2,
                         help="beam size in beam search")
     parser.add_argument("--length_penalty", type=float, default=1.0,
                         help="length penalty in beam search")
@@ -125,9 +125,10 @@ def get_parser():
 
 def main(params):
     logger = initialize_exp(params)
+    model_name = 'transformer'
     # load data
-    train_data = load_data(params.train_files, params, train=True, repeat=True)
-    model = build_model(params, model="transformer")
+    train_data = load_data(params.train_files, params, train=True, repeat=True, model=model_name)
+    model = build_model(params, model=model_name)
 
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
@@ -143,7 +144,7 @@ def main(params):
         trainer.iter()
         if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
             # evaluate perplexity
-            scores = evaluator.run_all_evals(trainer)
+            scores = evaluator.run_all_evals(trainer.n_total_iter, model=model_name)
             # print / JSON log
             for k, v in scores.items():
                 logger.info("%s -> %.6f" % (k, v))

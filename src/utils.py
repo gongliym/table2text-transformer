@@ -25,7 +25,7 @@ FALSY_STRINGS = {'off', 'false', '0'}
 TRUTHY_STRINGS = {'on', 'true', '1'}
 
 MODEL_PATH = '/checkpoint/%s/dumped' % getpass.getuser()
-DYNAMIC_COEFF = ['lambda_sm']
+DYNAMIC_COEFF = ['lambda_sm', 'lambda_mt']
 
 
 class AttrDict(dict):
@@ -230,6 +230,8 @@ def parse_lambda_config(params):
     x = "0:0,1000:0,2000:1"  # lambda will be equal to 0 for the first 1000 iterations, then will linearly increase to 1 until iteration 2000
     """
     for name in DYNAMIC_COEFF:
+        if not hasattr(params, name):
+            continue
         x = getattr(params, name)
         split = x.split(',')
         if len(split) == 1:
@@ -264,6 +266,8 @@ def update_lambdas(params, n_iter):
     Update all lambda coefficients.
     """
     for name in DYNAMIC_COEFF:
+        if not hasattr(params, name):
+            continue
         config = getattr(params, name + '_config')
         if config is not None:
             setattr(params, name, get_lambda_value(config, n_iter))

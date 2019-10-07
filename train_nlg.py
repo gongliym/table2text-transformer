@@ -52,7 +52,7 @@ def get_parser():
                         help="Use a GELU activation instead of ReLU")
 
     # data
-    parser.add_argument("--train_files", nargs='+', type=str, required=True,
+    parser.add_argument("--train_files", nargs=3, type=str, required=True,
                         help="Train data path")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
                         help="Vocabulary data path")
@@ -62,13 +62,13 @@ def get_parser():
                         help="Data encoding (utf-8)")
 
     # batch parameters
-    parser.add_argument("--max_sequence_size", type=int, default=1000,
+    parser.add_argument("--max_sequence_size", type=int, default=800,
                         help="Maximum length of sentences (after BPE)")
     parser.add_argument("--truncate_data", type=bool_flag, default=True,
                         help="truncate data when it's too long.")
-    parser.add_argument("--batch_size", type=int, default=4096,
+    parser.add_argument("--batch_size", type=int, default=6,
                         help="batch size")
-    parser.add_argument("--constant_batch_size", type=bool_flag, default=False,
+    parser.add_argument("--constant_batch_size", type=bool_flag, default=True,
                         help="use static batch size")
     parser.add_argument("--on_memory", type=bool_flag, default=False,
                         help="Load all data on memory.")
@@ -98,7 +98,7 @@ def get_parser():
     # experiment parameters
     parser.add_argument("--save_periodic", type=int, default=0,
                         help="Save the model periodically (0 to disable)")
-    parser.add_argument("--eval_periodic", type=int, default=2000,
+    parser.add_argument("--eval_periodic", type=int, default=200,
                         help="Save the model periodically (0 to disable)")
     parser.add_argument("--no_cuda", type=bool_flag, default=False,
                         help="Avoid using CUDA when available")
@@ -134,15 +134,16 @@ def main(params):
     evaluator = TransformerEvaluator(trainer, params)
 
     while trainer.n_total_iter <= params.max_train_steps:
-        trainer.mt_step(params.lambda_sm)
+        trainer.sm_step(params.lambda_sm)
         trainer.iter()
         if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
             # evaluate perplexity
-            scores = evaluator.run_all_evals(trainer)
+            scores = evaluator.run_all_evals(trainer.n_total_iter, model="table2text-transformer")
             # print / JSON log
             for k, v in scores.items():
                 logger.info("%s -> %.6f" % (k, v))
             logger.info("__log__:%s" % json.dumps(scores))
+            params.tensorboard_writer.add_scalar('Evaluation/nmt_bleu', scores['nmt_bleu'], trainer.n_total_iter)
 
             # end of evaluation
             trainer.save_best_model(scores)
