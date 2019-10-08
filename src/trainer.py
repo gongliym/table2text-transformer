@@ -1,5 +1,4 @@
 import os
-import math
 import time
 from logging import getLogger
 from collections import OrderedDict
@@ -22,7 +21,6 @@ class Trainer(object):
         self.tensorboard_writer = params.tensorboard_writer
 
         # stopping criterion used for early stopping
-        self.set_optimizer()
         if params.stopping_criterion != '':
             split = params.stopping_criterion.split(',')
             assert len(split) == 2 and split[1].isdigit()
@@ -224,7 +222,7 @@ class Trainer(object):
 
     def end_evaluation(self, scores):
         """
-        End the epoch.
+        End the evaluation.
         """
         # stop if the stopping criterion has not improved after a certain number of epochs
         if scores is not None and \
@@ -263,18 +261,16 @@ class EncDecTrainer(Trainer):
         self.params = params
 
         # optimizers
-        self.optimizer = get_optimizer(self.model.parameters(), self.params.optimizer)
+        self.set_optimizer()
+        # self.optimizer = get_optimizer(self.model.parameters(), self.params.optimizer)
 
         super().__init__(data, params)
 
-    def mt_step(self, lambda_coeff):
+    def mt_step(self):
         """
         Machine translation step.
         Can also be used for denoising auto-encoding.
         """
-        assert lambda_coeff >= 0
-        if lambda_coeff == 0:
-            return
         params = self.params
         self.model.train()
 
@@ -291,7 +287,6 @@ class EncDecTrainer(Trainer):
         # Tensorboard
         self.tensorboard_writer.add_scalar('Training/loss', loss.item(), self.n_total_iter)
 
-        loss = lambda_coeff * loss
         # optimize
         self.optimize(loss)
 
@@ -299,14 +294,11 @@ class EncDecTrainer(Trainer):
         self.stats['processed_s'] += batch['target_length'].size(0)
         self.stats['processed_w'] += batch['target_length'].sum().item()
 
-    def sm_step(self, lambda_coeff):
+    def sm_step(self):
         """
         Machine translation step.
         Can also be used for denoising auto-encoding.
         """
-        assert lambda_coeff >= 0
-        if lambda_coeff == 0:
-            return
         params = self.params
         self.model.train()
 
@@ -323,7 +315,6 @@ class EncDecTrainer(Trainer):
         # Tensorboard
         self.tensorboard_writer.add_scalar('Training/loss', loss.item(), self.n_total_iter)
 
-        loss = lambda_coeff * loss
         # optimize
         self.optimize(loss)
 

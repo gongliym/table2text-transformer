@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
 from logging import getLogger
-import itertools
-import math
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,7 +8,7 @@ import torch.nn.functional as F
 from .transformer import TransformerDecoder
 from .layers import Embedding, Linear, MultiHeadAttention, TransformerFFN
 from .layers import add_timing_signal, smoothed_softmax_cross_entropy_with_logits
-from .layers import gelu, get_masks
+from .layers import get_masks
 
 logger = getLogger()
 
@@ -36,7 +33,10 @@ class CSPredLayer(nn.Module):
         scores = self.proj_act(scores)
         y = y.view_as(scores).float()
         loss = self.criterion(scores, y)
-        return scores, loss
+        if get_scores:
+            return scores, loss
+        else:
+            return loss
 
 
 class SMPredLayer(nn.Module):
@@ -163,6 +163,7 @@ class TableEncoder(nn.Module):
             tensor *= mask.unsqueeze(-1).to(tensor.dtype)
         return tensor
 
+
 class Data2TextTransformer(nn.Module):
     """
     """
@@ -187,10 +188,13 @@ class Data2TextTransformer(nn.Module):
         self.cs_pred_layer = CSPredLayer(params)
         self.sm_pred_layer = SMPredLayer(params)
 
+        self.lambda_cs = min(1.0, max(0, params.lambda_cs))
+
         if params.share_embedding_and_softmax_weights:
             self.sm_pred_layer.proj.weight = self.decoder.embeddings.weight
 
         if params.share_source_target_embedding:
+            assert self.src_n_words == self.tgt_n_words
             self.encoder.embeddings.weight = self.decoder.embeddings.weight
 
     def forward(self, features, mode='train'):
@@ -202,18 +206,27 @@ class Data2TextTransformer(nn.Module):
         x2 = features['table_type']
         x3 = features['table_value']
         x4 = features['table_feature']
+        cs_label = features['table_label']
         src_len = features['table_length']
         if mode == 'train' or mode == 'valid':
             assert features['summary'] is not None and features['summary_length'] is not None
             tgt_seq = features['summary']
             tgt_len = features['summary_length']
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
+            cs_pred_mask = torch.arange(src_len.max(), dtype=torch.long, device=src_len.device) < src_len[:, None]
+            cs_label = cs_label[cs_pred_mask]
+            masked_encoder_output = encoder_output[cs_pred_mask]
+            cs_loss = self.cs_pred_layer(masked_encoder_output, cs_label)
+
             decoder_output = self.decoder(tgt_seq, tgt_len, src_enc=encoder_output, src_len=src_len)
-            pred_mask = torch.arange(tgt_len.max(), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
-            masked_decoder_output = decoder_output[pred_mask]
-            masked_y = tgt_seq.masked_select(pred_mask)
-            loss = self.sm_pred_layer(x=masked_decoder_output, y=masked_y, get_scores=False)
-            return loss
+            sm_pred_mask = torch.arange(tgt_len.max(), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
+            masked_decoder_output = decoder_output[sm_pred_mask]
+            masked_y = tgt_seq.masked_select(sm_pred_mask)
+            sm_loss = self.sm_pred_layer(x=masked_decoder_output, y=masked_y, get_scores=False)
+
+            self.params.tensorboard_writer.add_scalar('Training_NLG/cs_loss', cs_loss)
+            self.params.tensorboard_writer.add_scalar('Training_NLG/sm_loss', sm_loss)
+            return self.lambda_cs * cs_loss + (1-self.lambda_cs) * sm_loss
         elif mode == 'test':
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
             max_len = max(src_len) + 50

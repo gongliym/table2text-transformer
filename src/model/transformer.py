@@ -1,9 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
 from logging import getLogger
-import itertools
-import math
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -304,6 +301,7 @@ class Transformer(nn.Module):
             tgt_len = features['target_length']
             encoder_output = self.encoder(src_seq, src_len)
             decoder_output = self.decoder(tgt_seq, tgt_len, src_enc=encoder_output, src_len=src_len)
+            # TODO check here: tgt_len - 1 or just tgt_len
             pred_mask = torch.arange(tgt_len.max(), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
             masked_decoder_output = decoder_output[pred_mask]
             masked_y = tgt_seq.masked_select(pred_mask)

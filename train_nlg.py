@@ -74,10 +74,8 @@ def get_parser():
                         help="Load all data on memory.")
 
     # training parameters
-    parser.add_argument("--lambda_cs", type=str, default="1",
-                        help="content selection training")
-    parser.add_argument("--lambda_sm", type=str, default="1",
-                        help="MT coefficient")
+    parser.add_argument("--lambda_cs", type=str, default="0.5",
+                        help="content selection training weight")
     parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,lr=0.0007",
                         help="Optimizer (SGD / RMSprop / Adam, etc.)")
     parser.add_argument("--clip_grad_norm", type=float, default=5,
