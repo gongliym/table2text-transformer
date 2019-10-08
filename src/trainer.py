@@ -309,7 +309,7 @@ class EncDecTrainer(Trainer):
                 batch[each] = to_cuda(batch[each])[0]
 
         # encode source sentence
-        loss = self.model(batch, mode='train')
+        loss = self.model(batch, mode='train', step=self.n_total_iter)
         self.stats['loss'].append(loss.item())
 
         # Tensorboard

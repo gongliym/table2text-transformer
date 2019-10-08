@@ -25,7 +25,7 @@ FALSY_STRINGS = {'off', 'false', '0'}
 TRUTHY_STRINGS = {'on', 'true', '1'}
 
 MODEL_PATH = '/checkpoint/%s/dumped' % getpass.getuser()
-DYNAMIC_COEFF = ['lambda_sm', 'lambda_mt']
+DYNAMIC_COEFF = ['lambda_sm', 'lambda_mt', 'lambda_cs']
 
 
 class AttrDict(dict):

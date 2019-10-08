@@ -140,7 +140,7 @@ def main(params):
     evaluator = TransformerEvaluator(trainer, params)
 
     while trainer.n_total_iter <= params.max_train_steps:
-        trainer.mt_step(params.lambda_mt)
+        trainer.mt_step()
         trainer.iter()
         if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
             # evaluate perplexity

@@ -188,8 +188,6 @@ class Data2TextTransformer(nn.Module):
         self.cs_pred_layer = CSPredLayer(params)
         self.sm_pred_layer = SMPredLayer(params)
 
-        self.lambda_cs = min(1.0, max(0, params.lambda_cs))
-
         if params.share_embedding_and_softmax_weights:
             self.sm_pred_layer.proj.weight = self.decoder.embeddings.weight
 
@@ -197,7 +195,7 @@ class Data2TextTransformer(nn.Module):
             assert self.src_n_words == self.tgt_n_words
             self.encoder.embeddings.weight = self.decoder.embeddings.weight
 
-    def forward(self, features, mode='train'):
+    def forward(self, features, mode='train', step=-1):
         """
         Forward function with different forward modes.
         ### Small hack to handle PyTorch distributed.
@@ -206,12 +204,13 @@ class Data2TextTransformer(nn.Module):
         x2 = features['table_type']
         x3 = features['table_value']
         x4 = features['table_feature']
-        cs_label = features['table_label']
         src_len = features['table_length']
         if mode == 'train' or mode == 'valid':
             assert features['summary'] is not None and features['summary_length'] is not None
+            assert features['table_label'] is not None
             tgt_seq = features['summary']
             tgt_len = features['summary_length']
+            cs_label = features['table_label']
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
             cs_pred_mask = torch.arange(src_len.max(), dtype=torch.long, device=src_len.device) < src_len[:, None]
             cs_label = cs_label[cs_pred_mask]
@@ -224,9 +223,10 @@ class Data2TextTransformer(nn.Module):
             masked_y = tgt_seq.masked_select(sm_pred_mask)
             sm_loss = self.sm_pred_layer(x=masked_decoder_output, y=masked_y, get_scores=False)
 
-            self.params.tensorboard_writer.add_scalar('Training_NLG/cs_loss', cs_loss)
-            self.params.tensorboard_writer.add_scalar('Training_NLG/sm_loss', sm_loss)
-            return self.lambda_cs * cs_loss + (1-self.lambda_cs) * sm_loss
+            if step > 0:
+                self.params.tensorboard_writer.add_scalar('Training_NLG/cs_loss', cs_loss.item(), step)
+                self.params.tensorboard_writer.add_scalar('Training_NLG/sm_loss', sm_loss.item(), step)
+            return self.params.lambda_cs * cs_loss + (1-self.params.lambda_cs) * sm_loss
         elif mode == 'test':
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
             max_len = max(src_len) + 50

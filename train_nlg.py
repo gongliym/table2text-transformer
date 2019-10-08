@@ -31,7 +31,7 @@ def get_parser():
                         help="FFN inter-layer dimension")
     parser.add_argument("--num_heads", type=int, default=8,
                         help="Number of Transformer heads")
-    parser.add_argument("--num_encoder_layers", type=int, default=6,
+    parser.add_argument("--num_encoder_layers", type=int, default=1,
                         help="Number of Transformer layers")
     parser.add_argument("--num_decoder_layers", type=int, default=6,
                         help="Number of Transformer layers")
@@ -74,7 +74,7 @@ def get_parser():
                         help="Load all data on memory.")
 
     # training parameters
-    parser.add_argument("--lambda_cs", type=str, default="0.5",
+    parser.add_argument("--lambda_cs", type=str, default="0.2",
                         help="content selection training weight")
     parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,lr=0.0007",
                         help="Optimizer (SGD / RMSprop / Adam, etc.)")
@@ -94,9 +94,9 @@ def get_parser():
                         help="Reload a checkpoint")
 
     # experiment parameters
-    parser.add_argument("--save_periodic", type=int, default=0,
+    parser.add_argument("--save_periodic", type=int, default=2000,
                         help="Save the model periodically (0 to disable)")
-    parser.add_argument("--eval_periodic", type=int, default=200,
+    parser.add_argument("--eval_periodic", type=int, default=2000,
                         help="Save the model periodically (0 to disable)")
     parser.add_argument("--no_cuda", type=bool_flag, default=False,
                         help="Avoid using CUDA when available")
@@ -108,7 +108,7 @@ def get_parser():
                         help="is master")
 
     # evaluation
-    parser.add_argument("--beam_size", type=int, default=1,
+    parser.add_argument("--beam_size", type=int, default=2,
                         help="beam size in beam search")
     parser.add_argument("--length_penalty", type=float, default=1.0,
                         help="length penalty in beam search")
@@ -132,7 +132,7 @@ def main(params):
     evaluator = TransformerEvaluator(trainer, params)
 
     while trainer.n_total_iter <= params.max_train_steps:
-        trainer.sm_step(params.lambda_sm)
+        trainer.sm_step()
         trainer.iter()
         if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
             # evaluate perplexity
