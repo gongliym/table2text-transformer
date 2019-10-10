@@ -52,16 +52,16 @@ def initialize_exp(params):
     - dump parameters
     - create a logger
     """
-    if params.local_rank == -1 or params.no_cuda:
-        device = torch.device("cuda" if torch.cuda.is_available() and not params.no_cuda else "cpu")
-        params.n_gpu = torch.cuda.device_count()
-    else:
-        torch.cuda.set_device(params.local_rank)
-        device = torch.device("cuda", params.local_rank)
-        torch.distributed.init_process_group(backend='nccl')
-        params.n_gpu = 1
+    #if params.local_rank == -1 or params.no_cuda:
+    #    device = torch.device("cuda" if torch.cuda.is_available() and not params.no_cuda else "cpu")
+    #    params.n_gpu = torch.cuda.device_count()
+    #else:
+    #    torch.cuda.set_device(params.local_rank)
+    #    device = torch.device("cuda", params.local_rank)
+    #    torch.distributed.init_process_group(backend='nccl')
+    #    params.n_gpu = 1
 
-    params.device = device
+    # params.device = device
 
     # dump parameters
     get_model_path(params)
@@ -94,8 +94,8 @@ def initialize_exp(params):
     logger.info("The experiment will be stored in %s\n" % params.model_path)
     logger.info("Running command: %s" % command)
     logger.info("")
-    logger.info("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s",
-                   params.local_rank, params.device, params.n_gpu, bool(params.local_rank != -1))
+    #logger.info("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s",
+    #               params.local_rank, params.device, params.n_gpu, bool(params.local_rank != -1))
     return logger
 
 

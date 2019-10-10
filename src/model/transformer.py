@@ -212,7 +212,7 @@ class TransformerDecoder(nn.Module):
         # generate masks
         mask, attn_mask = get_masks(slen, tgt_len, causal=True)
         if src_enc is not None:
-            src_mask = torch.arange(src_len.max(), dtype=torch.long, device=tgt_len.device) < src_len[:, None]
+            src_mask = torch.arange(src_enc.size(1), dtype=torch.long, device=tgt_len.device) < src_len[:, None]
 
         # embeddings
         targets = self.embeddings(tgt_seq)
@@ -293,6 +293,8 @@ class Transformer(nn.Module):
         Forward function with different forward modes.
         ### Small hack to handle PyTorch distributed.
         """
+        if features is None:
+            return None
         src_seq = features['source']
         src_len = features['source_length']
         if mode == 'train' or mode == 'valid':
@@ -302,14 +304,15 @@ class Transformer(nn.Module):
             encoder_output = self.encoder(src_seq, src_len)
             decoder_output = self.decoder(tgt_seq, tgt_len, src_enc=encoder_output, src_len=src_len)
             # TODO check here: tgt_len - 1 or just tgt_len
-            pred_mask = torch.arange(tgt_len.max(), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
+            pred_mask = torch.arange(tgt_seq.size(1), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
             masked_decoder_output = decoder_output[pred_mask]
             masked_y = tgt_seq.masked_select(pred_mask)
             loss = self.pred_layer(x=masked_decoder_output, y=masked_y, get_scores=False)
             return loss
         elif mode == 'test':
             encoder_output = self.encoder(src_seq, src_len)
-            max_len = max(src_len) + 50
+            #max_len = max(src_len) + 50
+            max_len = src_seq.size(1) + 50
             if self.params.beam_size > 1:
                 output, out_len = self.generate_beam(encoder_output,
                                                      src_len,
@@ -320,7 +323,8 @@ class Transformer(nn.Module):
             else:
                 output, out_len = self.generate(encoder_output, src_len, max_len=max_len)
 
-            return output, out_len
+            #return output, out_len
+            return output
         else:
             raise Exception("Unknown mode: %s" % mode)
 
@@ -513,7 +517,8 @@ class Transformer(nn.Module):
             best.append(best_hyp)
 
         # generate target batch
-        decoded = src_len.new(bs, tgt_len.max().item()).fill_(self.pad_index)
+        # decoded = src_len.new(bs, tgt_len.max().item()).fill_(self.pad_index)
+        decoded = src_len.new(bs, max_len).fill_(self.pad_index)
         for i, hypo in enumerate(best):
             decoded[i, :tgt_len[i]-1] = hypo
             decoded[i, tgt_len[i]-1] = self.eos_index

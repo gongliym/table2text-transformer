@@ -276,12 +276,13 @@ class EncDecTrainer(Trainer):
 
         batch = next(self.data)
 
-        if params.device.type == 'cuda':
-            for each in batch:
-                batch[each] = to_cuda(batch[each])[0]
+        #if params.device.type == 'cuda':
+        #    for each in batch:
+        #        batch[each] = to_cuda(batch[each])[0]
 
         # encode source sentence
         loss = self.model(batch, mode='train')
+        loss = loss.mean()
         self.stats['loss'].append(loss.item())
 
         # Tensorboard

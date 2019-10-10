@@ -77,20 +77,17 @@ class TransformerEvaluator(Evaluator):
         step_num = self.trainer.n_total_iter
 
         hypotheses = []
-        for batch in load_and_batch_input_data(params.valid_files[0], params):
-            if params.device.type == 'cuda':
-                for each in batch:
-                    batch[each] = to_cuda(batch[each])[0]
-                #src_seq, src_len = to_cuda(batch['source'], batch['source_length'])
-            output, out_len = self.model(batch, mode='test')
+        with torch.cuda.device(0):
+            for idx, batch in enumerate(load_and_batch_input_data(params.valid_files[0], params)):
+                output = self.model(batch, mode='test')
 
-            for j in range(output.size(0)):
-                sent = output[j,:]
-                delimiters = (sent == params.eos_index).nonzero().view(-1)
-                assert len(delimiters) >= 1 and delimiters[0].item() == 0
-                sent = sent[1:] if len(delimiters) == 1 else sent[1:delimiters[1]]
-                target = ' '.join([params.tgt_vocab.itos(sent[idx].item()) for idx in range(len(sent))])
-                hypotheses.append(target)
+                for j in range(output.size(0)):
+                    sent = output[j,:]
+                    delimiters = (sent == params.eos_index).nonzero().view(-1)
+                    assert len(delimiters) >= 1 and delimiters[0].item() == 0
+                    sent = sent[1:] if len(delimiters) == 1 else sent[1:delimiters[1]]
+                    target = ' '.join([params.tgt_vocab.itos(sent[idx].item()) for idx in range(len(sent))])
+                    hypotheses.append(target)
 
         # hypothesis / reference paths
         hyp_name = 'eval{0}.valid.txt'.format(step_num)

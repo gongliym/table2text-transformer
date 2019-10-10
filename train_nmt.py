@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import json
 import argparse
+import torch
 
 from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
 from src.data.data_loader import load_data
@@ -106,10 +107,14 @@ def get_parser():
                         help="Avoid using CUDA when available")
     parser.add_argument("--multi_gpu", type=bool_flag, default=False,
                         help="using multiple gpus")
+    parser.add_argument("--ngpus", type=int, default=0,
+                        help="using multiple gpus")
     parser.add_argument("--local_rank", type=int, default=-1,
                         help="Multi-GPU - Local rank")
     parser.add_argument("--is_master", type=bool_flag, default=False,
                         help="is master")
+    parser.add_argument("--only_eval", type=bool_flag, default=False,
+                        help="only eval")
 
     # evaluation
     parser.add_argument("--beam_size", type=int, default=2,
@@ -118,7 +123,7 @@ def get_parser():
                         help="length penalty in beam search")
     parser.add_argument("--early_stopping", type=bool_flag, default=True,
                         help="early stopping in beam search")
-    parser.add_argument("--decode_batch_size", type=int, default=2,
+    parser.add_argument("--decode_batch_size", type=int, default=4,
                         help="decode batch size")
     return parser
 
@@ -133,11 +138,23 @@ def main(params):
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
 
-    if params.device.type == 'cuda':
-        model = model.cuda()
+    if params.ngpus >= 1:
+        # model = torch.nn.DataParallel(model, device_ids=list(range(params.ngpus)))
+        model = torch.nn.DataParallel(model)
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
 
     trainer = EncDecTrainer(model, train_data, params)
     evaluator = TransformerEvaluator(trainer, params)
+
+    if params.only_eval:
+        scores = evaluator.run_all_evals(trainer.n_total_iter, model=model_name)
+        # print / JSON log
+        for k, v in scores.items():
+            logger.info("%s -> %.6f" % (k, v))
+        logger.info("__log__:%s" % json.dumps(scores))
+        return
 
     while trainer.n_total_iter <= params.max_train_steps:
         trainer.mt_step()
