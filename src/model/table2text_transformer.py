@@ -212,13 +212,13 @@ class Data2TextTransformer(nn.Module):
             tgt_len = features['summary_length']
             cs_label = features['table_label']
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
-            cs_pred_mask = torch.arange(src_len.max(), dtype=torch.long, device=src_len.device) < src_len[:, None]
+            cs_pred_mask = torch.arange(x1.size(1), dtype=torch.long, device=src_len.device) < src_len[:, None]
             cs_label = cs_label[cs_pred_mask]
             masked_encoder_output = encoder_output[cs_pred_mask]
             cs_loss = self.cs_pred_layer(masked_encoder_output, cs_label)
 
             decoder_output = self.decoder(tgt_seq, tgt_len, src_enc=encoder_output, src_len=src_len)
-            sm_pred_mask = torch.arange(tgt_len.max(), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
+            sm_pred_mask = torch.arange(tgt_seq.size(1), dtype=torch.long, device=tgt_len.device) < tgt_len[:, None]
             masked_decoder_output = decoder_output[sm_pred_mask]
             masked_y = tgt_seq.masked_select(sm_pred_mask)
             sm_loss = self.sm_pred_layer(x=masked_decoder_output, y=masked_y, get_scores=False)
@@ -229,7 +229,7 @@ class Data2TextTransformer(nn.Module):
             return self.params.lambda_cs * cs_loss + (1-self.params.lambda_cs) * sm_loss
         elif mode == 'test':
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
-            max_len = max(src_len) + 50
+            max_len = x1.size(1) + 50
             if self.params.beam_size > 1:
                 output, out_len = self.generate_beam(encoder_output,
                                                      src_len,
@@ -240,7 +240,7 @@ class Data2TextTransformer(nn.Module):
             else:
                 output, out_len = self.generate(encoder_output, src_len, max_len=max_len)
 
-            return output, out_len
+            return output
         else:
             raise Exception("Unknown mode: %s" % mode)
 
@@ -433,7 +433,7 @@ class Data2TextTransformer(nn.Module):
             best.append(best_hyp)
 
         # generate target batch
-        decoded = src_len.new(bs, tgt_len.max().item()).fill_(self.pad_index)
+        decoded = src_len.new(bs, max_len).fill_(self.pad_index)
         for i, hypo in enumerate(best):
             decoded[i, :tgt_len[i]-1] = hypo
             decoded[i, tgt_len[i]-1] = self.eos_index

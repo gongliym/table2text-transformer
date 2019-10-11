@@ -2,7 +2,9 @@ from __future__ import absolute_import, division, print_function
 
 import json
 import argparse
-from src.utils import bool_flag, initialize_exp, load_tf_weights_in_tnmt
+import torch
+
+from src.utils import bool_flag, initialize_exp
 from src.data.data_loader import load_data
 from src.model import build_model
 from src.trainer import EncDecTrainer
@@ -98,14 +100,14 @@ def get_parser():
                         help="Save the model periodically (0 to disable)")
     parser.add_argument("--eval_periodic", type=int, default=2000,
                         help="Save the model periodically (0 to disable)")
-    parser.add_argument("--no_cuda", type=bool_flag, default=False,
+    parser.add_argument("--use_cuda", type=bool_flag, default=True,
                         help="Avoid using CUDA when available")
     parser.add_argument("--multi_gpu", type=bool_flag, default=False,
                         help="using multiple gpus")
-    parser.add_argument("--local_rank", type=int, default=-1,
-                        help="Multi-GPU - Local rank")
-    parser.add_argument("--is_master", type=bool_flag, default=False,
-                        help="is master")
+    parser.add_argument("--ngpus", type=int, default=0,
+                        help="using multiple gpus")
+    parser.add_argument("--only_eval", type=bool_flag, default=False,
+                        help="only eval")
 
     # evaluation
     parser.add_argument("--beam_size", type=int, default=2,
@@ -114,18 +116,21 @@ def get_parser():
                         help="length penalty in beam search")
     parser.add_argument("--early_stopping", type=bool_flag, default=True,
                         help="early stopping in beam search")
-    parser.add_argument("--decode_batch_size", type=int, default=2,
+    parser.add_argument("--decode_batch_size", type=int, default=10,
                         help="decode batch size")
     return parser
 
 
 def main(params):
     logger = initialize_exp(params)
+    model_name = "table2text-transformer"
     # load data
-    train_data = load_data(params.train_files, params, train=True, repeat=True, model='table2text-transformer')
-    model = build_model(params, model="table2text-transformer")
+    train_data = load_data(params.train_files, params, train=True, repeat=True, model=model_name)
+    model = build_model(params, model=model_name)
 
-    if params.device.type == 'cuda':
+    if params.ngpus >= 1:
+        model = torch.nn.DataParallel(model, device_ids=list(range(params.ngpus)), dim=0)
+    if params.use_cuda:
         model = model.cuda()
 
     trainer = EncDecTrainer(model, train_data, params)
@@ -136,7 +141,7 @@ def main(params):
         trainer.iter()
         if params.eval_periodic > 0 and trainer.n_total_iter % params.eval_periodic == 0:
             # evaluate perplexity
-            scores = evaluator.run_all_evals(trainer.n_total_iter, model="table2text-transformer")
+            scores = evaluator.run_all_evals(trainer.n_total_iter, model=model_name)
             # print / JSON log
             for k, v in scores.items():
                 logger.info("%s -> %.6f" % (k, v))
