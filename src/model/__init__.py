@@ -5,8 +5,8 @@ from .table2text_transformer import Data2TextTransformer
 logger = getLogger()
 
 
-def build_model(params, model="transformer"):
-    if model == "transformer":
+def build_model(params, model="nmt"):
+    if model == "nmt":
         model = Transformer(params)
 
         total_num_parameters = 0
@@ -15,7 +15,7 @@ def build_model(params, model="transformer"):
                 logger.info("Trainable parameter: %s %s" % (name, parameter.size()))
                 total_num_parameters += parameter.numel()
         logger.info("Total trainable parameter number: %d" % total_num_parameters)
-    elif model == "table2text-transformer":
+    elif model == "nlg":
         model = Data2TextTransformer(params)
 
         total_num_parameters = 0

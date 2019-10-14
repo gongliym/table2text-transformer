@@ -16,15 +16,13 @@ def get_parser():
     Generate a parameters parser.
     """
     # parse parameters
-    parser = argparse.ArgumentParser(description="Train NLG")
+    parser = argparse.ArgumentParser(description="Train NLG/NMT")
 
     # main parameters
-    parser.add_argument("--model_name", type=str, default="table2text-transformer",
-                        help="model name")
     parser.add_argument("--model_path", type=str, default="./model_training/",
                         help="Experiment dump path")
-    parser.add_argument("--exp_name", type=str, default="nlg",
-                        help="Experiment name")
+    parser.add_argument("--model_name", type=str, default="nmt",
+                        help="model name")
     parser.add_argument("--exp_id", type=str, default="",
                         help="Experiment ID")
 
@@ -56,8 +54,8 @@ def get_parser():
                         help="Use a GELU activation instead of ReLU")
 
     # data
-    parser.add_argument("--train_files", nargs=3, type=str, required=True,
-                        help="Train data path")
+    parser.add_argument("--train_files", nargs='+', type=str, required=True,
+                        help="Train data path (3 files for NLG, 2 for NMT)")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
                         help="Vocabulary data path")
     parser.add_argument("--valid_files", nargs=2, type=str, required=True,
@@ -80,7 +78,7 @@ def get_parser():
     # training parameters
     parser.add_argument("--lambda_cs", type=str, default="0.2",
                         help="content selection training weight")
-    parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,lr=0.0007",
+    parser.add_argument("--optimizer", type=str, default="adam_inverse_sqrt,beta1=0.9,beta2=0.98,lr=0.0007",
                         help="Optimizer (SGD / RMSprop / Adam, etc.)")
     parser.add_argument("--clip_grad_norm", type=float, default=5,
                         help="Clip gradients norm (0 to disable)")
@@ -129,15 +127,27 @@ def main(params):
     if params.ngpus > 1:
         params.multi_gpu = True
         model = torch.nn.DataParallel(model, device_ids=list(range(params.ngpus)), dim=0)
+    else:
+        params.multi_gpu = False
+
     if params.ngpus > 0:
         params.use_cuda = True
         model = model.cuda()
+    else:
+        params.use_cuda = False
 
     trainer = EncDecTrainer(model, train_data, params)
     evaluator = TransformerEvaluator(trainer, params)
 
+    if params.only_eval:
+        scores = evaluator.run_all_evals(trainer.n_total_iter, model=params.model_name)
+        for k, v in scores.items():
+            logger.info("%s -> %.6f" % (k, v))
+        logger.info("__log__:%s" % json.dumps(scores))
+        return
+
     while trainer.n_total_iter <= params.max_train_steps:
-        trainer.sm_step()
+        trainer.step()
         trainer.iter()
 
         if params.save_periodic > 0 and trainer.n_total_iter % params.save_periodic == 0:
@@ -160,3 +170,4 @@ if __name__ == "__main__":
     params = parser.parse_args()
 
     main(params)
+

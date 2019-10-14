@@ -288,7 +288,7 @@ class Transformer(nn.Module):
         if params.share_source_target_embedding:
             self.encoder.embeddings.weight = self.decoder.embeddings.weight
 
-    def forward(self, features, mode='train'):
+    def forward(self, features, mode='train', step=-1):
         """
         Forward function with different forward modes.
         ### Small hack to handle PyTorch distributed.

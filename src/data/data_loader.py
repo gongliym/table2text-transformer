@@ -11,14 +11,14 @@ def load_data(input_files, params, train=False, repeat=False, model="transformer
     """
     Load parallel data.
     """
-    if model == "transformer":
+    if model == "nmt":
         assert 2 == len(params.train_files)
         train_dataset = TranslationDataset(params.train_files[0], params.train_files[1],
                                            params.vocab_files[0], params.vocab_files[1],
                                            params=params)
 
         train_data_iter = TranslationDataIterator(train_dataset, params=params, train=train, repeat=repeat)
-    elif model == "table2text-transformer":
+    elif model == "nlg":
         assert 3 == len(params.train_files)
         train_dataset = Table2TextDataset(params.train_files[0], params.train_files[1], params.train_files[2],
                                            params.vocab_files[0], params.vocab_files[1],

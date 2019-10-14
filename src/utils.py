@@ -52,17 +52,6 @@ def initialize_exp(params):
     - dump parameters
     - create a logger
     """
-    #if params.local_rank == -1 or params.no_cuda:
-    #    device = torch.device("cuda" if torch.cuda.is_available() and not params.no_cuda else "cpu")
-    #    params.n_gpu = torch.cuda.device_count()
-    #else:
-    #    torch.cuda.set_device(params.local_rank)
-    #    device = torch.device("cuda", params.local_rank)
-    #    torch.distributed.init_process_group(backend='nccl')
-    #    params.n_gpu = 1
-
-    # params.device = device
-
     # dump parameters
     get_model_path(params)
     pickle.dump(params, open(os.path.join(params.model_path, 'params.pkl'), 'wb'))
@@ -83,7 +72,7 @@ def initialize_exp(params):
     params.command = command + ' --exp_id "%s"' % params.exp_id
 
     # check experiment name
-    assert len(params.exp_name.strip()) > 0
+    assert len(params.model_name.strip()) > 0
     params.tensorboard_writer = SummaryWriter(log_dir=os.path.join(params.model_path, 'tensorboard'))
 
     # create a logger
@@ -104,10 +93,10 @@ def get_model_path(params):
     Create a directory to store the experiment.
     """
     model_path = MODEL_PATH if params.model_path == '' else params.model_path
-    assert len(params.exp_name) > 0
+    assert len(params.model_name) > 0
 
     # create the sweep path if it does not exist
-    sweep_path = os.path.join(model_path, params.exp_name)
+    sweep_path = os.path.join(model_path, params.model_name)
     if not os.path.exists(sweep_path):
         subprocess.Popen("mkdir -p %s" % sweep_path, shell=True).wait()
 

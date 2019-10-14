@@ -19,35 +19,23 @@ class Trainer(object):
         Initialize trainer.
         """
         self.tensorboard_writer = params.tensorboard_writer
-
-        # stopping criterion used for early stopping
-        if params.stopping_criterion != '':
-            split = params.stopping_criterion.split(',')
-            assert len(split) == 2 and split[1].isdigit()
-            self.decrease_counts_max = int(split[1])
-            self.decrease_counts = 0
-            if split[0][0] == '_':
-                self.stopping_criterion = (split[0][1:], False)
+        
+        if params.eval_metric is not None:
+            if params.eval_metric[0] == '_':
+                self.eval_metric = (params.eval_metric[1:], False)
             else:
-                self.stopping_criterion = (split[0], True)
-            self.best_stopping_criterion = -1e12 if self.stopping_criterion[1] else 1e12
-        else:
-            self.stopping_criterion = None
-            self.best_stopping_criterion = None
+                self.eval_metric = (params.eval_metric, True)
 
-        # validation metrics
-        self.metrics = []
-        metrics = [m for m in params.validation_metrics.split(',') if m != '']
-        for m in metrics:
-            m = (m[1:], False) if m[0] == '_' else (m, True)
-            self.metrics.append(m)
-        self.best_metrics = {metric: (-1e12 if biggest else 1e12) for (metric, biggest) in self.metrics}
+            metric_name, biggest = self.eval_metric
+            self.best_eval_score = {metric_name: (-1e12 if biggest else 1e12)}
+        else:
+            self.eval_metric = None
 
         # training statistics
         self.n_total_iter = 0
-        self.n_sentences = 0
         self.stats = OrderedDict([('processed_s', 0), ('processed_w', 0), ('loss', [])])
         self.last_time = time.time()
+        self.decrease_count = 0
 
         # reload potential checkpoints
         self.reload_checkpoint()
@@ -141,10 +129,11 @@ class Trainer(object):
         path = os.path.join(self.params.model_path, '%s.pth' % name)
         logger.info('Saving models to %s ...' % path)
         data = {}
-        if self.params.multi_gpu:
-            data['model'] = self.model.module.state_dict()
-        else:
-            data['model'] = self.model.state_dict()
+        data['model'] = self.model.state_dict()
+        #if self.params.multi_gpu:
+        #    data['model'] = self.model.module.state_dict()
+        #else:
+        #    data['model'] = self.model.state_dict()
 
         data['params'] = {k: v for k, v in self.params.__dict__.items() if k!="tensorboard_writer"}
 
@@ -156,6 +145,8 @@ class Trainer(object):
         """
         data = {
             'n_total_iter': self.n_total_iter,
+            'best_eval_score': self.best_eval_score,
+            'decrease_count': self.decrease_count,
         }
 
         data['model'] = self.model.state_dict()
@@ -190,6 +181,8 @@ class Trainer(object):
 
         # reload main metrics
         self.n_total_iter = data['n_total_iter']
+        self.best_eval_score = data['best_eval_score']
+        self.decrease_count = data['decrease_count']
 
         assert self.params.src_vocab == data['params'].src_vocab
         assert self.params.tgt_vocab == data['params'].tgt_vocab
@@ -207,48 +200,47 @@ class Trainer(object):
         """
         Save best models according to given validation metrics.
         """
-        # TODO
-        # if not self.params.is_master:
-        #     return
-        for metric, biggest in self.metrics:
-            if metric not in scores:
-                logger.warning("Metric \"%s\" not found in scores!" % metric)
-                continue
-            factor = 1 if biggest else -1
-            if factor * scores[metric] > factor * self.best_metrics[metric]:
-                self.best_metrics[metric] = scores[metric]
-                logger.info('New best score for %s: %.6f' % (metric, scores[metric]))
-                self.save_model('best-%s' % metric)
+        metric, biggest = self.eval_metric
+        if metric not in scores:
+            logger.warning("Metric \"%s\" not found in scores!" % metric)
+            return
+
+        factor = 1 if biggest else -1
+        if factor * scores[metric] > factor * self.best_eval_score[metric]:
+            self.best_eval_score[metric] = scores[metric]
+            logger.info('New best score for %s: %.6f' % (metric, scores[metric]))
+            self.save_model('best-%s' % metric)
 
     def end_evaluation(self, scores):
         """
         End the evaluation.
         """
-        # stop if the stopping criterion has not improved after a certain number of epochs
-        if scores is not None and \
-            self.stopping_criterion is not None:
-            metric, biggest = self.stopping_criterion
-            assert metric in scores, metric
-            factor = 1 if biggest else -1
-            if factor * scores[metric] > factor * self.best_stopping_criterion:
-                self.best_stopping_criterion = scores[metric]
-                logger.info("New best validation score: %f" % self.best_stopping_criterion)
-                self.decrease_counts = 0
-            else:
-                logger.info("Not a better validation score (%i / %i)."
-                            % (self.decrease_counts, self.decrease_counts_max))
-                self.decrease_counts += 1
-            if self.decrease_counts > self.decrease_counts_max:
-                logger.info("Stopping criterion has been below its best value for more "
-                            "than %i epochs. Ending the experiment..." % self.decrease_counts_max)
-                if self.params.multi_gpu and 'SLURM_JOB_ID' in os.environ:
-                    os.system('scancel ' + os.environ['SLURM_JOB_ID'])
-                exit()
         self.save_checkpoint()
-
         for name, parameter in self.model.named_parameters():
             if parameter.requires_grad:
                 self.tensorboard_writer.add_histogram(name, parameter.data)
+
+        # stop if the stopping criterion has not improved after a certain number of epochs
+        metric, biggest = self.eval_metric
+        if metric not in scores:
+            logger.warning("Metric \"%s\" not found in scores!" % metric)
+            return
+
+        factor = 1 if biggest else -1
+        if factor * scores[metric] > factor * self.best_eval_score[metric]:
+            self.best_eval_score[metric] = scores[metric]
+            self.decrease_count = 0
+            logger.info('New best validation score for %s: %.6f' % (metric, scores[metric]))
+            self.save_model('best-%s' % metric)
+        else:
+            self.decrease_count += 1
+            logger.info("Not a better validation score (%i / %i)."
+                        % (self.decrease_count, self.stopping_criterion))
+
+        if self.decrease_count >= self.stopping_criterion:
+            logger.info("Stopping criterion has been below its best value for more "
+                        "than %i epochs. Ending the experiment..." % self.stopping_criterion)
+            exit()
 
 
 class EncDecTrainer(Trainer):
@@ -276,9 +268,9 @@ class EncDecTrainer(Trainer):
 
         batch = next(self.data)
 
-        #if params.device.type == 'cuda':
-        #    for each in batch:
-        #        batch[each] = to_cuda(batch[each])[0]
+        if params.use_cuda:
+            for each in batch:
+                batch[each] = batch[each].cuda()
 
         # encode source sentence
         loss = self.model(batch, mode='train')
@@ -323,4 +315,33 @@ class EncDecTrainer(Trainer):
         # number of processed sentences / words
         self.stats['processed_s'] += batch['summary_length'].size(0)
         self.stats['processed_w'] += batch['summary_length'].sum().item()
+
+    def step(self):
+        """
+        Machine translation step.
+        Can also be used for denoising auto-encoding.
+        """
+        params = self.params
+        self.model.train()
+
+        batch = next(self.data)
+
+        if params.use_cuda:
+            for each in batch:
+                batch[each] = batch[each].cuda()
+
+        # encode source sentence
+        loss = self.model(batch, mode='train', step=self.n_total_iter)
+        loss = loss.mean()
+        self.stats['loss'].append(loss.item())
+
+        # Tensorboard
+        self.tensorboard_writer.add_scalar('Training/loss', loss.item(), self.n_total_iter)
+
+        # optimize
+        self.optimize(loss)
+
+        # number of processed sentences / words
+        self.stats['processed_s'] += batch['target_length'].size(0)
+        self.stats['processed_w'] += batch['target_length'].sum().item()
 

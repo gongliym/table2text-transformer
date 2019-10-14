@@ -206,10 +206,10 @@ class Data2TextTransformer(nn.Module):
         x4 = features['table_feature']
         src_len = features['table_length']
         if mode == 'train' or mode == 'valid':
-            assert features['summary'] is not None and features['summary_length'] is not None
+            assert features['target'] is not None and features['target_length'] is not None
             assert features['table_label'] is not None
-            tgt_seq = features['summary']
-            tgt_len = features['summary_length']
+            tgt_seq = features['target']
+            tgt_len = features['target_length']
             cs_label = features['table_label']
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
             cs_pred_mask = torch.arange(x1.size(1), dtype=torch.long, device=src_len.device) < src_len[:, None]

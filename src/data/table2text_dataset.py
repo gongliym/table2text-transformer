@@ -94,7 +94,7 @@ def create_batch(example_list, pad_index=0):
     for example in example_list:
         assert len(example['table_entity']) == len(example['table_type']) == len(example['table_value'])
         assert len(example['table_value']) == len(example['table_feature']) == len(example['table_label'])
-    max_len = max(len(example['summary']) for example in example_list)
+    max_len = max(len(example['target']) for example in example_list)
     table_entities = []
     table_typies   = []
     table_values   = []
@@ -110,8 +110,8 @@ def create_batch(example_list, pad_index=0):
         table_features.append(example['table_feature'])
         table_labels.append(example['table_label'])
         table_lengths.append(len(example['table_label']))
-        summaries.append(example['summary'][:max_len] + [pad_index] * max(0, max_len - len(example['summary'])))
-        summary_lengths.append(len(summaries[-1]) - max(0, max_len - len(example['summary'])))
+        summaries.append(example['target'][:max_len] + [pad_index] * max(0, max_len - len(example['target'])))
+        summary_lengths.append(len(summaries[-1]) - max(0, max_len - len(example['target'])))
 
     table_entities = torch.tensor(table_entities, dtype=torch.long)
     table_typies = torch.tensor(table_typies, dtype=torch.long)
@@ -128,8 +128,8 @@ def create_batch(example_list, pad_index=0):
         'table_feature': table_features,
         'table_label': table_labels,
         'table_length': table_lengths, 
-        'summary': summaries,
-        'summary_length': summary_lengths
+        'target': summaries,
+        'target_length': summary_lengths
     }
     
 def create_example(table_seq, table_label_seq, summary_seq, table_vocab, summary_vocab):
@@ -157,7 +157,7 @@ def create_example(table_seq, table_label_seq, summary_seq, table_vocab, summary
         'table_value': table_value,
         'table_feature': table_feature,
         'table_label': table_label,
-        'summary': summary
+        'target': summary
     }
         
     return example
