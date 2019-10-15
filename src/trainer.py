@@ -8,6 +8,7 @@ from torch.nn.utils import clip_grad_norm_
 
 from .optim import get_optimizer
 from .utils import to_cuda, parse_lambda_config, update_lambdas
+from .utils import get_reinforcement_learning_loss
 
 logger = getLogger()
 
@@ -129,11 +130,11 @@ class Trainer(object):
         path = os.path.join(self.params.model_path, '%s.pth' % name)
         logger.info('Saving models to %s ...' % path)
         data = {}
-        data['model'] = self.model.state_dict()
-        #if self.params.multi_gpu:
-        #    data['model'] = self.model.module.state_dict()
-        #else:
-        #    data['model'] = self.model.state_dict()
+        #data['model'] = self.model.state_dict()
+        if self.params.multi_gpu:
+            data['model'] = self.model.module.state_dict()
+        else:
+            data['model'] = self.model.state_dict()
 
         data['params'] = {k: v for k, v in self.params.__dict__.items() if k!="tensorboard_writer"}
 
@@ -149,7 +150,11 @@ class Trainer(object):
             'decrease_count': self.decrease_count,
         }
 
-        data['model'] = self.model.state_dict()
+        if self.params.multi_gpu:
+            data['model'] = self.model.module.state_dict()
+        else:
+            data['model'] = self.model.state_dict()
+
         data['model' + '_optimizer'] = self.optimizer.state_dict()
 
         data['params'] = {k: v for k, v in self.params.__dict__.items() if k!="tensorboard_writer"}
@@ -170,22 +175,19 @@ class Trainer(object):
                 checkpoint_path = self.params.reload_checkpoint
                 assert os.path.isfile(checkpoint_path)
         logger.warning('Reloading checkpoint from %s ...' % checkpoint_path)
-        if self.params.device == 'cpu':
-            data = torch.load(checkpoint_path, map_location=lambda storage, loc: 'cpu')
-        else:
-            data = torch.load(checkpoint_path, map_location=lambda storage, loc: storage.cuda(self.params.local_rank))
+        ckpt = torch.load(checkpoint_path, map_location=self.params.device)
 
         # reload model parameters and optimizers
-        self.model.load_state_dict(data['model'])
-        self.optimizer.load_state_dict(data['model' + '_optimizer'])
+        self.model.load_state_dict(ckpt['model'])
+        self.optimizer.load_state_dict(ckpt['model' + '_optimizer'])
 
         # reload main metrics
-        self.n_total_iter = data['n_total_iter']
-        self.best_eval_score = data['best_eval_score']
-        self.decrease_count = data['decrease_count']
+        self.n_total_iter = ckpt['n_total_iter']
+        self.best_eval_score = ckpt['best_eval_score']
+        self.decrease_count = ckpt['decrease_count']
 
-        assert self.params.src_vocab == data['params'].src_vocab
-        assert self.params.tgt_vocab == data['params'].tgt_vocab
+        assert self.params.src_vocab == ckpt['params']['src_vocab']
+        assert self.params.tgt_vocab == ckpt['params']['tgt_vocab']
         logger.warning('Checkpoint reloaded. Resuming at step %i ...' % self.n_total_iter)
 
     def save_periodic(self):
@@ -235,11 +237,11 @@ class Trainer(object):
         else:
             self.decrease_count += 1
             logger.info("Not a better validation score (%i / %i)."
-                        % (self.decrease_count, self.stopping_criterion))
+                        % (self.decrease_count, self.params.stopping_criterion))
 
-        if self.decrease_count >= self.stopping_criterion:
+        if self.decrease_count >= self.params.stopping_criterion:
             logger.info("Stopping criterion has been below its best value for more "
-                        "than %i epochs. Ending the experiment..." % self.stopping_criterion)
+                        "than %i epochs. Ending the experiment..." % self.params.stopping_criterion)
             exit()
 
 
@@ -287,34 +289,43 @@ class EncDecTrainer(Trainer):
         self.stats['processed_s'] += batch['target_length'].size(0)
         self.stats['processed_w'] += batch['target_length'].sum().item()
 
-    def sm_step(self):
+    def rl_step(self):
         """
         Machine translation step.
         Can also be used for denoising auto-encoding.
         """
         params = self.params
-        self.model.train()
 
         batch = next(self.data)
 
         if params.use_cuda:
             for each in batch:
                 batch[each] = batch[each].cuda()
+        
+        with torch.no_grad():
+            self.model.eval()
+            sampling_output, sampling_scores = self.model(batch, mode='sampling', step=self.n_total_iter)
+            greedy_output = self.model(batch, mode='greedy', step=self.n_total_iter)
 
+        self.model.train()
         # encode source sentence
-        loss = self.model(batch, mode='train', step=self.n_total_iter)
-        loss = loss.mean()
+        loss_lm = self.model(batch, mode='train', step=self.n_total_iter)
+        loss_lm = loss_lm.mean()
+        loss_rl = get_reinforcement_learning_loss(batch, greedy_output, sampling_output, sampling_scores, params)
+        loss = params.lambda_rl * loss_rl + (1 - params.lambda_rl) * loss_lm
         self.stats['loss'].append(loss.item())
 
         # Tensorboard
         self.tensorboard_writer.add_scalar('Training/loss', loss.item(), self.n_total_iter)
+        self.tensorboard_writer.add_scalar('Training_RL/loss_lm', loss_lm.item(), self.n_total_iter)
+        self.tensorboard_writer.add_scalar('Training_RL/loss_rl', loss_lm.item(), self.n_total_iter)
 
         # optimize
         self.optimize(loss)
 
         # number of processed sentences / words
-        self.stats['processed_s'] += batch['summary_length'].size(0)
-        self.stats['processed_w'] += batch['summary_length'].sum().item()
+        self.stats['processed_s'] += batch['target_length'].size(0)
+        self.stats['processed_w'] += batch['target_length'].sum().item()
 
     def step(self):
         """

@@ -41,9 +41,9 @@ class Evaluator(object):
         """
         scores = OrderedDict({'iter': iter_num})
         with torch.no_grad():
-            if model == 'transformer':
+            if model == 'nmt':
                 self.evaluate_nmt(scores)
-            elif model == 'table2text-transformer':
+            elif model == 'nlg':
                 self.evaluate_nlg(scores)
             else:
                 raise Exception("Unkown model name. %s" % model)
@@ -120,7 +120,7 @@ class TransformerEvaluator(Evaluator):
 
         hypotheses = []
         for batch in load_and_batch_table_data(params.valid_files[0], params):
-            if params.use_cuda == 'cuda':
+            if params.use_cuda:
                 for each in batch:
                     batch[each] = batch[each].cuda()
                 #src_seq, src_len = to_cuda(batch['source'], batch['source_length'])

@@ -18,6 +18,8 @@ import torch
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
+from nltk.translate.bleu_score import sentence_bleu
+
 from .logger import create_logger
 
 
@@ -25,7 +27,7 @@ FALSY_STRINGS = {'off', 'false', '0'}
 TRUTHY_STRINGS = {'on', 'true', '1'}
 
 MODEL_PATH = '/checkpoint/%s/dumped' % getpass.getuser()
-DYNAMIC_COEFF = ['lambda_sm', 'lambda_mt', 'lambda_cs']
+DYNAMIC_COEFF = ['lambda_sm', 'lambda_mt', 'lambda_cs', 'lambda_rl']
 
 
 class AttrDict(dict):
@@ -496,3 +498,37 @@ def load_tf_weights_in_tnmt(model, tf_checkpoint_path):
                 assign_parameter(getattr(layer_ptr, 'weight'), tf_params[tf_prefix + "/scale"])
                 assign_parameter(getattr(layer_ptr, 'bias'), tf_params[tf_prefix + "/offset"])
     return model
+
+
+def get_reinforcement_learning_loss(batch, greedy_output, sampling_output, sampling_scores, params):
+    reference = batch['target']
+    assert reference.size(0) == greedy_output.size(0) == sampling_output.size(0)
+    
+    rewards = []
+    for j in range(reference.size(0)):
+        sent_ref = reference[j,:]
+        delimiters = (sent_ref == params.eos_index).nonzero().view(-1)
+        assert len(delimiters) == 1
+        sent_ref = sent_ref[:delimiters[0]]
+
+        sent_greedy = greedy_output[j,:]
+        delimiters = (sent_greedy == params.eos_index).nonzero().view(-1)
+        assert len(delimiters) >= 1 and delimiters[0].item() == 0
+        sent_greedy = sent_greedy[1:] if len(delimiters) == 1 else sent_greedy[1:delimiters[1]]
+
+        sent_sampling = sampling_output[j,:]
+        delimiters = (sent_sampling == params.eos_index).nonzero().view(-1)
+        assert len(delimiters) >= 1 and delimiters[0].item() == 0
+        sent_sampling = sent_sampling[1:] if len(delimiters) == 1 else sent_sampling[1:delimiters[1]]
+
+        sent_ref = sent_ref.tolist()
+        sent_greedy = sent_greedy.tolist()
+        sent_sampling = sent_sampling.tolist()
+        reward_baseline = sentence_bleu([sent_ref], sent_greedy)
+        reward_sampling = sentence_bleu([sent_ref], sent_sampling)
+        
+        rewards.append(reward_baseline - reward_sampling)
+
+    rewards = torch.tensor(rewards, device=sampling_scores.device)
+    assert rewards.size() == sampling_scores.size()
+    return torch.mean(rewards * sampling_scores)

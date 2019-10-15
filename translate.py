@@ -5,7 +5,7 @@ import argparse
 from src.utils import bool_flag, load_tf_weights_in_tnmt, AttrDict, to_cuda, restore_segmentation
 from src.data.data_loader import load_data
 from src.model import build_model
-from src.data.dataset import load_and_batch_input_data
+from src.data.table2text_dataset import load_and_batch_table_data
 import torch
 
 
@@ -19,6 +19,8 @@ def get_parser():
     # main parameters
     parser.add_argument("--model_path", type=str,
                         help="Experiment dump path")
+    parser.add_argument("--model_name", type=str, default="nmt",
+                        help="model name")
     parser.add_argument("--tf_model_path", type=str, default="",
                         help="Load from tensorflow model")
 
@@ -44,7 +46,8 @@ def main(params):
     device = torch.device("cuda" if torch.cuda.is_available() and not params.no_cuda else "cpu")
     reloaded = torch.load(params.model_path, map_location=device)
     model_params = AttrDict(reloaded['params'])
-    model = build_model(model_params)
+    model = build_model(model_params, model=params.model_name)
+    model = torch.nn.DataParallel(model, device_ids=list(range(1)), dim=0)
     model.load_state_dict(reloaded['model'])
     if params.tf_model_path != "":
         model = load_tf_weights_in_tnmt(model, params.tf_model_path)
@@ -58,15 +61,13 @@ def main(params):
     model.eval()
 
     outf = open(params.output, 'w', encoding='utf-8')
-    for batch in load_and_batch_input_data(params.input, model_params):
-        src_seq = batch['source']
-        src_len = batch['source_length']
+    for batch in load_and_batch_table_data(params.input, model_params):
         if device.type == 'cuda':
-            src_seq, src_len = to_cuda(src_seq, src_len)
-        print(src_seq, src_len)
+            for each in batch:
+                batch[each] = batch[each].cuda()
 
-        output, out_len = model(mode='test', src_seq=src_seq, src_len=src_len)
-        print(output, out_len)
+        output = model(batch, mode='greedy')
+        print(output)
 
         for j in range(output.size(0)):
             sent = output[j,:]

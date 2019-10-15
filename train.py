@@ -114,6 +114,13 @@ def get_parser():
                         help="early stopping in beam search")
     parser.add_argument("--decode_batch_size", type=int, default=10,
                         help="decode batch size")
+
+    # reinforcement learning fine-tuning
+    parser.add_argument("--train_rl", type=bool_flag, default=False,
+                        help="reinforcement learning training")
+    parser.add_argument("--lambda_rl", type=str, default="0.2",
+                        help="content selection training weight")
+
     return parser
 
 
@@ -132,9 +139,11 @@ def main(params):
 
     if params.ngpus > 0:
         params.use_cuda = True
+        params.device = torch.device('cuda')
         model = model.cuda()
     else:
         params.use_cuda = False
+        params.device = torch.device('cpu')
 
     trainer = EncDecTrainer(model, train_data, params)
     evaluator = TransformerEvaluator(trainer, params)
@@ -147,7 +156,10 @@ def main(params):
         return
 
     while trainer.n_total_iter <= params.max_train_steps:
-        trainer.step()
+        if params.train_rl:
+            trainer.rl_step()
+        else:
+            trainer.step()
         trainer.iter()
 
         if params.save_periodic > 0 and trainer.n_total_iter % params.save_periodic == 0:
@@ -160,8 +172,6 @@ def main(params):
                 logger.info("%s -> %.6f" % (k, v))
             logger.info("__log__:%s" % json.dumps(scores))
             params.tensorboard_writer.add_scalar('Evaluation/nmt_bleu', scores['nmt_bleu'], trainer.n_total_iter)
-
-            trainer.save_best_model(scores)
             trainer.end_evaluation(scores)
 
 if __name__ == "__main__":

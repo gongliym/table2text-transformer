@@ -170,6 +170,7 @@ class Data2TextTransformer(nn.Module):
 
     def __init__(self, params):
         super(Data2TextTransformer, self).__init__()
+        self.target_max_len = params.max_sequence_size
         self.params = params
         self.eos_index = params.eos_index
         self.pad_index = params.pad_index
@@ -229,22 +230,39 @@ class Data2TextTransformer(nn.Module):
             return self.params.lambda_cs * cs_loss + (1-self.params.lambda_cs) * sm_loss
         elif mode == 'test':
             encoder_output = self.encoder(x1, x2, x3, x4, src_len)
-            max_len = x1.size(1) + 50
             if self.params.beam_size > 1:
                 output, out_len = self.generate_beam(encoder_output,
                                                      src_len,
                                                      self.params.beam_size,
                                                      self.params.length_penalty,
                                                      self.params.early_stopping,
-                                                     max_len=max_len)
+                                                     max_len=self.target_max_len)
             else:
-                output, out_len = self.generate(encoder_output, src_len, max_len=max_len)
-
+                output, out_len = self.generate(encoder_output, 
+                                                src_len, 
+                                                max_len=self.target_max_len,
+                                                sampling=False)
             return output
+        elif mode == 'greedy':
+            encoder_output = self.encoder(x1, x2, x3, x4, src_len)
+            output, out_len = self.generate(encoder_output, 
+                                            src_len, 
+                                            max_len=self.target_max_len, 
+                                            sampling=False)
+            return output
+        elif mode == 'sampling':
+            encoder_output = self.encoder(x1, x2, x3, x4, src_len)
+            output, out_len, scores = self.generate(encoder_output, 
+                                                    src_len, 
+                                                    max_len=self.target_max_len, 
+                                                    sampling=True, 
+                                                    get_scores=True)
+            scores = scores / out_len.float()
+            return output, scores
         else:
             raise Exception("Unknown mode: %s" % mode)
 
-    def generate(self, enc_out, src_len, max_len=200, sample_temperature=None):
+    def generate(self, enc_out, src_len, max_len=200, sampling=False, get_scores=False):
         """
         Decode a sentence given initial start (without beam search)
         :param enc_out: Encoder output (bs, seq_len, dim)
@@ -265,10 +283,10 @@ class Data2TextTransformer(nn.Module):
         cur_len = 1
         gen_len = src_len.clone().fill_(1)
         unfinished_sents = src_len.clone().fill_(1)
+        sent_scores = src_len.clone().fill_(0).float()
 
         # cache compute states
         cache = {'slen': 0}
-
         while cur_len < max_len:
             # compute word socres
             tensor = self.decoder(tgt_seq=F.pad(generated[:, 1:cur_len], (0, 1)),
@@ -282,15 +300,18 @@ class Data2TextTransformer(nn.Module):
             scores = self.sm_pred_layer.get_scores(tensor) # (bs, vocab_size)
 
             # select next words: sample or greedy
-            if sample_temperature is None:
+            if not sampling:
                 next_words = torch.topk(scores, 1)[1].squeeze(1)
             else:
-                next_words = torch.multinomial(F.softmax(scores / sample_temperature, dim=1), 1).squeeze(1)
+                next_words = torch.multinomial(torch.exp(scores), 1).squeeze(1)
             assert next_words.size() == (bs,)
 
             # update generations / lengths / finished sentences / current length
             generated[:, cur_len] = next_words * unfinished_sents + self.pad_index * (1 - unfinished_sents)
             gen_len.add_(unfinished_sents)
+            
+            sent_scores += torch.gather(scores, 1, next_words.unsqueeze(-1)).squeeze(1) * unfinished_sents.float()
+
             unfinished_sents.mul_(next_words.ne(self.eos_index).long())
             cur_len = cur_len + 1
 
@@ -305,7 +326,10 @@ class Data2TextTransformer(nn.Module):
         # sanity check
         assert (generated == self.eos_index).sum() == 2 * bs
 
-        return generated[:cur_len], gen_len
+        if get_scores:
+            return generated[:cur_len], gen_len, sent_scores
+        else:
+            return generated[:cur_len], gen_len
 
     def generate_beam(self, enc_out, src_len, beam_size, length_penalty, early_stopping, max_len=200):
         """
