@@ -4,10 +4,11 @@ from logging import getLogger
 
 from .translation_dataset import TranslationDataset, TranslationDataIterator
 from .table2text_dataset import Table2TextDataset, Table2TextDataIterator
+from .relation_dataset import RelationDataset, RelationDataIterator
 
 logger = getLogger()
 
-def load_data(input_files, params, train=False, repeat=False, model="transformer"):
+def load_data(input_files, params, train=False, repeat=False, model="nmt"):
     """
     Load parallel data.
     """
@@ -25,6 +26,12 @@ def load_data(input_files, params, train=False, repeat=False, model="transformer
                                            params=params)
 
         train_data_iter = Table2TextDataIterator(train_dataset, params=params, train=train, repeat=repeat)
+    elif model == "ie":
+        assert 1 == len(params.train_files)
+        train_dataset = RelationDataset(params.train_files[0], params.vocab_files[0], params.vocab_files[1],
+                                           params=params)
+
+        train_data_iter = RelationDataIterator(train_dataset, params=params, train=train, repeat=repeat)
     else:
         raise Exception("Unkown model name. %s" % model)
 

@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import argparse
 from src.utils import bool_flag
-from src.data.data_loader import load_data, load_data2text_data
+from src.data.data_loader import load_data
 
 def get_parser():
     """
@@ -12,7 +12,7 @@ def get_parser():
     parser = argparse.ArgumentParser(description="Dataset Tester")
 
     ## data
-    parser.add_argument("--train_files", nargs=3, type=str, required=True,
+    parser.add_argument("--train_files", nargs=1, type=str, required=True,
                         help="Train data path")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
                         help="Vocabulary data path")
@@ -24,7 +24,7 @@ def get_parser():
                         help="Maximum length of sentences (after BPE)")
     parser.add_argument("--truncate_data", type=bool_flag, default=True,
                         help="truncate data when it's too long.")
-    parser.add_argument("--batch_size", type=int, default=4096,
+    parser.add_argument("--batch_size", type=int, default=128,
                         help="batch size")
     parser.add_argument("--constant_batch_size", type=bool_flag, default=False,
                         help="use static batch size")
@@ -35,7 +35,7 @@ def get_parser():
 
 def main(params):
     # load data
-    train_data = load_data2text_data(params.train_files, params, train=False, repeat=False)
+    train_data = load_data(params.train_files, params, train=False, repeat=False, model='ie')
     for batch in train_data:
         print(batch)
 

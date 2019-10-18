@@ -258,7 +258,6 @@ class Table2TextDataset(object):
         """
         self.params = params
         self.table_file = table_file
-        self.table_file = table_file
         self.summary_file = summary_file
         self.table_vocab_file = table_vocab_file
         self.summary_vocab_file = summary_vocab_file
