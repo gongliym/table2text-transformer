@@ -48,26 +48,30 @@ class IEEvaluator(nn.Module):
         input_lengths = features['sentence_length']
         entity_indexes = features['entity_index']
         value_indexes  = features['value_index']
+        bs, slen = input_sentence.size()
+        word_embedding = self.token_embedding(input_sentence)
+
+        positions = torch.arange(slen, dtype=torch.long, device=input_lengths.device).unsqueeze(0).expand_as(input_sentence)
+        ent_relative_positions = positions - entity_indexes.unsqueeze(-1) + self.max_len
+        val_relative_positions = positions - value_indexes.unsqueeze(-1) + self.max_len
+
+        ent_position_embedding = self.ent_pos_embedding(ent_relative_positions)
+        val_position_embedding = self.val_pos_embedding(val_relative_positions)
+
+        x = torch.cat((word_embedding, ent_position_embedding, val_position_embedding), -1)
+        x, (hn, cn) = self.blstm(x)
+        x, indices = torch.max(x, dim=1)
+        scores = self.ffn(x)
+
         if mode == 'train' or mode == 'valid':
             assert 'label' in features
             targets = features['label']
-            
-            bs, slen = input_sentence.size()
-            word_embedding = self.token_embedding(input_sentence)
-
-            positions = torch.arange(slen).unsqueeze(0).expand_as(input_sentence)
-            ent_relative_positions = positions - entity_indexes.unsqueeze(-1) + self.max_len
-            val_relative_positions = positions - value_indexes.unsqueeze(-1) + self.max_len
-
-            ent_position_embedding = self.ent_pos_embedding(ent_relative_positions)
-            val_position_embedding = self.val_pos_embedding(val_relative_positions)
-
-            x = torch.cat((word_embedding, ent_position_embedding, val_position_embedding), -1)
-            x, (hn, cn) = self.blstm(x)
-            x, indices = torch.max(x, dim=1)
-            scores = self.ffn(x)
             loss = F.cross_entropy(scores, targets)
             return loss
+        elif mode == 'test':
+            _, predicted = torch.max(scores, dim=1)
+            return predicted
+
 
 
 

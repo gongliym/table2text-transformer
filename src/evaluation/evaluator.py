@@ -9,6 +9,7 @@ from torch.nn import functional as F
 from src.utils import to_cuda, restore_segmentation, concat_batches
 from src.data.translation_dataset import load_and_batch_input_data
 from src.data.table2text_dataset import load_and_batch_table_data
+from src.data.relation_dataset import load_and_batch_data
 
 
 BLEU_SCRIPT_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'multi-bleu.perl')
@@ -67,9 +68,45 @@ class ClassificationEvaluator(Evaluator):
         params = self.params
         step_num = self.trainer.n_total_iter
 
-        scores['prec'] = 1.0
-        logger.info("Prec %f" % scores['prec'])
-        #params.tensorboard_writer.add_scalar('Evaluation/ie_prec', scores['prec'], step_num)
+        results = []
+        for batch in load_and_batch_data(params.valid_files[0], params):
+            if params.use_cuda:
+                for each in batch:
+                    batch[each] = batch[each].cuda()
+            output = self.model(batch, mode='test')
+            results.extend(output.tolist())
+
+        reference = []
+        for line in open(params.valid_files[0], 'r'):
+            fields = line.strip().split('\t')
+            assert len(fields) == 4
+            reference.append(params.tgt_label[fields[-1]])
+
+        no_rel_id = params.tgt_label['NOREL']
+        assert len(results) == len(reference)
+        corr = 0
+        total = 0
+        pred_corr = 0
+        pred_total = 0
+        ref_total = 0
+        for p, r in zip(results, reference):
+            total += 1
+            if p == r:
+                corr += 1
+                if p != no_rel_id:
+                    pred_corr += 1
+
+            if p != no_rel_id:
+                pred_total += 1
+            if r != no_rel_id:
+                ref_total += 1
+
+        scores['precision'] = corr * 1.0 / (total + 1e-10)
+        scores['ie_precision'] = pred_corr * 1.0 / (pred_total + 1e-10)
+        scores['ie_recall'] = pred_corr * 1.0 / (ref_total + 1e-10)
+        params.tensorboard_writer.add_scalar('Evaluation/precision', scores['precision'], step_num)
+        params.tensorboard_writer.add_scalar('Evaluation/ie_precision', scores['ie_precision'], step_num)
+        params.tensorboard_writer.add_scalar('Evaluation/ie_recall', scores['ie_recall'], step_num)
 
 
 class TransformerEvaluator(Evaluator):

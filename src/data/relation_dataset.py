@@ -28,12 +28,12 @@ def load_and_batch_data(input_file, params):
     examples = []
     for line in open(input_file, 'r'):
         fields = line.strip().split('\t')
-        assert fields >= 3
+        assert len(fields) >= 3
         sentence, entity_index, value_index = fields[:3]
         token_ids = [params.src_vocab[token] for token in sentence.split()]
 
         example = {'sentence': token_ids, 'sentence_length': len(token_ids), 
-                   'entity_index': entity_index, 'value_index': value_index}
+                   'entity_index': int(entity_index), 'value_index': int(value_index)}
         examples.append(example)
 
         if len(examples) >= params.decode_batch_size:
@@ -41,7 +41,7 @@ def load_and_batch_data(input_file, params):
             sentence_padded, lengths, entity_indexes, value_indexes = [], [], [], []
             for example in examples[:params.decode_batch_size]:
                 sentence_padded.append(example['sentence'] + 
-                                       [pad_index] * max(0, max_len - len(example['sentence'])))
+                                       [params.pad_index] * max(0, max_len - len(example['sentence'])))
                 lengths.append(example['sentence_length'])
                 entity_indexes.append(example['entity_index'])
                 value_indexes.append(example['value_index'])
@@ -63,7 +63,7 @@ def load_and_batch_data(input_file, params):
         sentence_padded, lengths, entity_indexes, value_indexes = [], [], [], []
         for example in examples:
             sentence_padded.append(example['sentence'] + 
-                                   [pad_index] * max(0, max_len - len(example['sentence'])))
+                                   [params.pad_index] * max(0, max_len - len(example['sentence'])))
             lengths.append(example['sentence_length'])
             entity_indexes.append(example['entity_index'])
             value_indexes.append(example['value_index'])
