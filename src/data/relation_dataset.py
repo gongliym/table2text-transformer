@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import io
 import math
+import random
 from logging import getLogger
 import numpy as np
 import torch
@@ -117,7 +118,8 @@ def create_batch(example_list, pad_index=0):
         'sentence_length': lengths_tensor,
         'entity_index': entity_index_tensor,
         'value_index' : value_index_tensor,
-        'label': label_tensor
+        'label': label_tensor,
+        'target_length': lengths_tensor # for computing training speed
     }
 
 class RelationDataIterator(object):

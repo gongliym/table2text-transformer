@@ -8,7 +8,7 @@ from src.utils import bool_flag, initialize_exp
 from src.data.data_loader import load_data
 from src.model import build_model
 from src.trainer import EncDecTrainer
-from src.evaluation.evaluator import TransformerEvaluator
+from src.evaluation.evaluator import TransformerEvaluator, ClassificationEvaluator
 
 
 def get_parser():
@@ -58,7 +58,7 @@ def get_parser():
                         help="Train data path (3 files for NLG, 2 for NMT)")
     parser.add_argument("--vocab_files", nargs=2, type=str, required=True,
                         help="Vocabulary data path")
-    parser.add_argument("--valid_files", nargs=2, type=str, required=True,
+    parser.add_argument("--valid_files", nargs='+', type=str, required=True,
                         help="Train data path")
     parser.add_argument("--encoding", type=str, default='utf-8',
                         help="Data encoding (utf-8)")
@@ -146,7 +146,7 @@ def main(params):
         params.device = torch.device('cpu')
 
     trainer = EncDecTrainer(model, train_data, params)
-    evaluator = TransformerEvaluator(trainer, params)
+    evaluator = ClassificationEvaluator(trainer, params)
 
     if params.only_eval:
         scores = evaluator.run_all_evals(trainer.n_total_iter, model=params.model_name)
@@ -171,7 +171,6 @@ def main(params):
             for k, v in scores.items():
                 logger.info("%s -> %.6f" % (k, v))
             logger.info("__log__:%s" % json.dumps(scores))
-            params.tensorboard_writer.add_scalar('Evaluation/nmt_bleu', scores['nmt_bleu'], trainer.n_total_iter)
             trainer.end_evaluation(scores)
 
 if __name__ == "__main__":

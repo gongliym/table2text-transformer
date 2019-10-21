@@ -46,8 +46,31 @@ class Evaluator(object):
             elif model == 'nlg':
                 self.evaluate_nlg(scores)
             else:
-                raise Exception("Unkown model name. %s" % model)
+                self.evaluate(scores)
         return scores
+
+class ClassificationEvaluator(Evaluator):
+
+    def __init__(self, trainer, params):
+        """
+        Build encoder / decoder evaluator
+        :param trainer:
+        :param params:
+        """
+        self.model = trainer.model
+        self.src_vocab = params.src_vocab
+        super().__init__(trainer, params)
+
+    def evaluate(self, scores):
+        self.model.eval()
+
+        params = self.params
+        step_num = self.trainer.n_total_iter
+
+        scores['prec'] = 1.0
+        logger.info("Prec %f" % scores['prec'])
+        #params.tensorboard_writer.add_scalar('Evaluation/ie_prec', scores['prec'], step_num)
+
 
 class TransformerEvaluator(Evaluator):
 
@@ -104,6 +127,7 @@ class TransformerEvaluator(Evaluator):
         bleu_score = float(bleu_info[7:bleu_info.index(',')])
         logger.info("BLEU %s %s : %s" % (hyp_path, ref_path, bleu_info))
         scores['nmt_bleu'] = bleu_score
+        #params.tensorboard_writer.add_scalar('Evaluation/nmt_bleu', scores['nmt_bleu'], step_num)
 
     def evaluate_nlg(self, scores):
         """
@@ -149,6 +173,7 @@ class TransformerEvaluator(Evaluator):
         bleu_score = float(bleu_info[7:bleu_info.index(',')])
         logger.info("BLEU %s %s : %s" % (hyp_path, ref_path, bleu_info))
         scores['nmt_bleu'] = bleu_score
+        #params.tensorboard_writer.add_scalar('Evaluation/nmt_bleu', scores['nmt_bleu'], step_num)
 
 def eval_moses_bleu(ref, hyp):
     """
